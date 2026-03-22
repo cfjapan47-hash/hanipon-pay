@@ -7,7 +7,8 @@ import BalanceCard from "@/components/BalanceCard";
 import TransactionList from "@/components/TransactionList";
 import { getUserTransactions } from "@/lib/firestore";
 import type { Transaction } from "@/types";
-import { Loader2, Store, Shield, UserPlus, Gift } from "lucide-react";
+import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
 
@@ -16,6 +17,7 @@ function HomeContent() {
   const { liffUser, user, loading, error } = state;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isMerchant, setIsMerchant] = useState(false);
+  const [showMyQr, setShowMyQr] = useState(false);
 
   useEffect(() => {
     if (!liffUser) return;
@@ -55,6 +57,42 @@ function HomeContent() {
       )}
 
       <BalanceCard balance={user.balance} displayName={user.displayName} />
+
+      {/* マイQRコードボタン */}
+      <button
+        onClick={() => setShowMyQr(true)}
+        className="mt-3 w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-400 text-orange-600 rounded-xl px-4 py-3 text-sm font-bold hover:bg-orange-50 transition-colors"
+      >
+        <QrCode size={20} />
+        マイQRコードを表示
+      </button>
+
+      {/* QRコードモーダル */}
+      {showMyQr && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xs text-center relative">
+            <button
+              onClick={() => setShowMyQr(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-sm text-gray-500 mb-1">マイQRコード</p>
+            <p className="text-lg font-bold mb-4">{user.displayName}</p>
+            <div className="flex justify-center mb-4">
+              <QRCodeSVG
+                value={liffUser.userId}
+                size={200}
+                level="M"
+                includeMargin
+              />
+            </div>
+            <p className="text-xs text-gray-400">
+              加盟店でチャージ・支払い時にスキャンしてもらえます
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* クイックメニュー */}
       <div className="mt-4 grid grid-cols-2 gap-2">
