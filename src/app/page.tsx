@@ -12,7 +12,8 @@ import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
 
 function HomeContent() {
-  const { liffUser, user, loading, error } = useAuth();
+  const state = useAuth();
+  const { liffUser, user, loading, error } = state;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isMerchant, setIsMerchant] = useState(false);
 
@@ -28,8 +29,9 @@ function HomeContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex flex-col items-center justify-center h-screen gap-3">
         <Loader2 className="animate-spin text-orange-500" size={32} />
+        <p className="text-sm text-gray-500">{state?.status || "読み込み中..."}</p>
       </div>
     );
   }

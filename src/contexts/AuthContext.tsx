@@ -22,6 +22,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+  status: string;
 }
 
 const AuthContext = createContext<AuthState>({
@@ -29,6 +30,7 @@ const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
   error: null,
+  status: "",
 });
 
 function createFallbackUser(displayName: string, pictureUrl?: string): User {
@@ -48,44 +50,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     loading: true,
     error: null,
+    status: "初期化中...",
   });
 
   useEffect(() => {
     async function init() {
-      const timeout = (ms: number) =>
-        new Promise((_, reject) => setTimeout(() => reject(new Error("タイムアウト")), ms));
-
+      // Step 1: LIFF初期化（30秒タイムアウト）
+      setState((s) => ({ ...s, status: "LINE接続中..." }));
       try {
-        await Promise.race([initLiff(), timeout(10000)]);
+        await Promise.race([
+          initLiff(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("LIFF初期化タイムアウト")), 30000)
+          ),
+        ]);
       } catch (liffErr) {
         console.error("[Auth] LIFF init failed:", liffErr);
-        // LIFF初期化失敗時でもフォールバックで表示
-        const fallbackUser = createFallbackUser("ゲスト");
         setState({
           liffUser: { userId: "guest", displayName: "ゲスト" },
-          user: fallbackUser,
+          user: createFallbackUser("ゲスト"),
           loading: false,
           error: null,
+          status: "ゲストモード",
         });
         return;
       }
 
+      // Step 2: プロフィール取得（15秒タイムアウト）
+      setState((s) => ({ ...s, status: "プロフィール取得中..." }));
       let liffUser: LiffUser;
       try {
-        liffUser = await getLiffUser();
+        liffUser = await Promise.race([
+          getLiffUser(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("プロフィール取得タイムアウト")), 15000)
+          ),
+        ]);
       } catch (profileErr) {
-        console.warn("[Auth] getProfile failed, using guest:", profileErr);
-        // プロフィール取得失敗時もフォールバック
-        const fallbackUser = createFallbackUser("ゲスト");
+        console.warn("[Auth] getProfile failed:", profileErr);
         setState({
           liffUser: { userId: "guest", displayName: "ゲスト" },
-          user: fallbackUser,
+          user: createFallbackUser("ゲスト"),
           loading: false,
           error: null,
+          status: "ゲストモード",
         });
         return;
       }
 
+      // Step 3: Firestore ユーザーデータ取得（15秒タイムアウト）
+      setState((s) => ({ ...s, status: "データ読み込み中..." }));
       let user: User;
       if (USE_MOCK) {
         user = {
@@ -104,17 +118,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               displayName: liffUser.displayName,
               pictureUrl: liffUser.pictureUrl,
             }),
-            timeout(8000).then(() => {
-              throw new Error("Firestore timeout");
-            }),
-          ]) as User;
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Firestore timeout")), 15000)
+            ),
+          ]);
         } catch (firestoreErr) {
-          console.warn("[Auth] Firestore failed, using fallback:", firestoreErr);
+          console.warn("[Auth] Firestore failed:", firestoreErr);
           user = createFallbackUser(liffUser.displayName, liffUser.pictureUrl);
         }
       }
 
-      setState({ liffUser, user, loading: false, error: null });
+      setState({ liffUser, user, loading: false, error: null, status: "完了" });
     }
     init();
   }, []);
