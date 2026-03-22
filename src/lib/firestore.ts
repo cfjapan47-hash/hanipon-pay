@@ -893,17 +893,37 @@ export function onThreadMessages(
     where("threadId", "==", threadId),
     limit(100)
   );
-  return onSnapshot(q, (snap) => {
-    const messages = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as Message)
-      .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-    callback(messages);
-  });
+
+  // リアルタイムリスナー + ポーリングフォールバック
+  let unsubSnapshot = () => {};
+  try {
+    unsubSnapshot = onSnapshot(q, (snap) => {
+      const messages = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as Message)
+        .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+      callback(messages);
+    }, (err) => {
+      console.warn("[onThreadMessages] snapshot error, using polling:", err);
+    });
+  } catch { /* ignore */ }
+
+  // 5秒ごとのポーリングも併用
+  const interval = setInterval(async () => {
+    try {
+      const snap = await getDocs(q);
+      const messages = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as Message)
+        .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+      callback(messages);
+    } catch { /* ignore */ }
+  }, 5000);
+
+  return () => {
+    unsubSnapshot();
+    clearInterval(interval);
+  };
 }
 
-/**
- * 加盟店のスレッド一覧をリアルタイム監視
- */
 export function onMerchantThreads(
   merchantId: string,
   callback: (threads: MessageThread[]) => void
@@ -913,17 +933,35 @@ export function onMerchantThreads(
     where("merchantId", "==", merchantId),
     limit(50)
   );
-  return onSnapshot(q, (snap) => {
-    const threads = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
-      .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
-    callback(threads);
-  });
+
+  let unsubSnapshot = () => {};
+  try {
+    unsubSnapshot = onSnapshot(q, (snap) => {
+      const threads = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+        .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+      callback(threads);
+    }, (err) => {
+      console.warn("[onMerchantThreads] snapshot error:", err);
+    });
+  } catch { /* ignore */ }
+
+  const interval = setInterval(async () => {
+    try {
+      const snap = await getDocs(q);
+      const threads = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+        .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+      callback(threads);
+    } catch { /* ignore */ }
+  }, 5000);
+
+  return () => {
+    unsubSnapshot();
+    clearInterval(interval);
+  };
 }
 
-/**
- * 市民のスレッド一覧をリアルタイム監視
- */
 export function onCitizenThreads(
   userId: string,
   callback: (threads: MessageThread[]) => void
@@ -933,12 +971,33 @@ export function onCitizenThreads(
     where("userId", "==", userId),
     limit(50)
   );
-  return onSnapshot(q, (snap) => {
-    const threads = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
-      .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
-    callback(threads);
-  });
+
+  let unsubSnapshot = () => {};
+  try {
+    unsubSnapshot = onSnapshot(q, (snap) => {
+      const threads = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+        .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+      callback(threads);
+    }, (err) => {
+      console.warn("[onCitizenThreads] snapshot error:", err);
+    });
+  } catch { /* ignore */ }
+
+  const interval = setInterval(async () => {
+    try {
+      const snap = await getDocs(q);
+      const threads = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+        .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+      callback(threads);
+    } catch { /* ignore */ }
+  }, 5000);
+
+  return () => {
+    unsubSnapshot();
+    clearInterval(interval);
+  };
 }
 
 export async function markThreadRead(
