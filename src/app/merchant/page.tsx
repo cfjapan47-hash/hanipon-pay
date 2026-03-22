@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -97,6 +97,15 @@ function MerchantContent() {
           </div>
         </div>
       </div>
+
+      {/* メイン操作ボタン */}
+      <Link
+        href="/merchant/receive"
+        className="flex items-center justify-center gap-2 bg-green-500 text-white rounded-xl px-4 py-4 shadow-sm font-bold text-base hover:bg-green-600 transition-colors mb-3"
+      >
+        <ShoppingBag size={22} />
+        支払いを受ける
+      </Link>
 
       <div className="grid grid-cols-3 gap-3 mb-3">
         <Link
