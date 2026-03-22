@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, QrCode, Store, MessageCircle, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { onCitizenThreads } from "@/lib/firestore";
-import type { MessageThread } from "@/types";
+import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const navItems = [
   { href: "/", label: "ホーム", icon: Home },
@@ -21,14 +21,55 @@ export default function Navigation() {
   const { liffUser } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const fetchUnread = useCallback(async (userId: string) => {
+    try {
+      const q = query(
+        collection(db, "messageThreads"),
+        where("userId", "==", userId)
+      );
+      const snap = await getDocs(q);
+      let total = 0;
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        total += data.unreadByCitizen || 0;
+      });
+      setUnreadCount(total);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!liffUser || liffUser.userId === "guest") return;
-    const unsub = onCitizenThreads(liffUser.userId, (threads: MessageThread[]) => {
-      const total = threads.reduce((sum, t) => sum + (t.unreadByCitizen || 0), 0);
+    const userId = liffUser.userId;
+
+    // 即座に1回取得
+    fetchUnread(userId);
+
+    // リアルタイムリスナーも設定
+    const q = query(
+      collection(db, "messageThreads"),
+      where("userId", "==", userId)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      let total = 0;
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        total += data.unreadByCitizen || 0;
+      });
       setUnreadCount(total);
+    }, () => {
+      // エラー時は無視
     });
-    return () => unsub();
-  }, [liffUser]);
+
+    // 30秒ごとにポーリングも追加（フォールバック）
+    const interval = setInterval(() => fetchUnread(userId), 30000);
+
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
+  }, [liffUser, fetchUnread]);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
