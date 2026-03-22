@@ -156,6 +156,16 @@ export interface MessageThread {
   totalSpent?: number;
 }
 
+// ========== Customer Note ==========
+
+export interface CustomerNote {
+  id?: string;
+  merchantId: string;
+  userId: string;
+  text: string;
+  createdAt: Timestamp;
+}
+
 // ========== Shop Customer ==========
 
 export interface ShopCustomer {

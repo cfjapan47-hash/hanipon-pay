@@ -163,8 +163,8 @@ function ShopsContent() {
 
       {/* メッセージモーダル */}
       {msgShop && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-          <div className="bg-white rounded-t-2xl w-full max-w-md p-5">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="font-bold text-gray-800">{msgShop.data.name}</p>

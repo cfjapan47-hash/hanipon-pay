@@ -17,7 +17,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -1350,4 +1350,37 @@ export async function getSystemStats(): Promise<{
     totalMerchants: merchants.size,
     totalTransactions: transactions.size,
   };
+}
+
+// ========== Customer Notes (顧客メモ) ==========
+
+export async function addCustomerNote(
+  merchantId: string,
+  userId: string,
+  text: string
+): Promise<string> {
+  if (USE_MOCK) return "mock-note-1";
+  const ref = await addDoc(collection(db, "customerNotes"), {
+    merchantId,
+    userId,
+    text,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getCustomerNotes(
+  merchantId: string,
+  userId: string
+): Promise<CustomerNote[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "customerNotes"),
+    where("merchantId", "==", merchantId),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CustomerNote);
 }

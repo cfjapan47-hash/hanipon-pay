@@ -6,9 +6,11 @@ import {
   getMerchantByOwner,
   getMerchantCustomers,
   sendMessage,
+  addCustomerNote,
+  getCustomerNotes,
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
-import type { Merchant, ShopCustomer } from "@/types";
+import type { Merchant, ShopCustomer, CustomerNote } from "@/types";
 import {
   Loader2,
   ArrowLeft,
@@ -16,6 +18,8 @@ import {
   MessageCircle,
   Send,
   X,
+  StickyNote,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
@@ -32,6 +36,13 @@ function CustomersContent() {
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
   const [sentMessage, setSentMessage] = useState("");
+
+  // メモ関連
+  const [noteTarget, setNoteTarget] = useState<ShopCustomer | null>(null);
+  const [notes, setNotes] = useState<CustomerNote[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [noteSaving, setNoteSaving] = useState(false);
 
   useEffect(() => {
     if (!liffUser) return;
@@ -68,6 +79,35 @@ function CustomersContent() {
       console.error(e);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleOpenNotes = async (customer: ShopCustomer) => {
+    if (!merchant) return;
+    setNoteTarget(customer);
+    setNotesLoading(true);
+    try {
+      const fetched = await getCustomerNotes(merchant.id, customer.userId);
+      setNotes(fetched);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!merchant || !noteTarget || !noteText.trim()) return;
+    setNoteSaving(true);
+    try {
+      await addCustomerNote(merchant.id, noteTarget.userId, noteText.trim());
+      const fetched = await getCustomerNotes(merchant.id, noteTarget.userId);
+      setNotes(fetched);
+      setNoteText("");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setNoteSaving(false);
     }
   };
 
@@ -138,6 +178,83 @@ function CustomersContent() {
         </div>
       )}
 
+      {/* 顧客メモモーダル */}
+      {noteTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center">
+          <div className="bg-white rounded-t-2xl w-full max-w-md max-h-[80vh] flex flex-col animate-in slide-in-from-bottom">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <StickyNote size={18} className="text-orange-500" />
+                {noteTarget.displayName} さんのメモ
+              </h3>
+              <button
+                onClick={() => {
+                  setNoteTarget(null);
+                  setNoteText("");
+                  setNotes([]);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* メモ入力 */}
+            <div className="px-5 py-3 border-b bg-gray-50">
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="メモを入力..."
+                rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+              />
+              <button
+                onClick={handleAddNote}
+                disabled={noteSaving || !noteText.trim()}
+                className="mt-2 w-full bg-orange-500 text-white rounded-xl px-4 py-2.5 font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {noteSaving ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Plus size={16} />
+                )}
+                {noteSaving ? "保存中..." : "メモを追加"}
+              </button>
+            </div>
+
+            {/* メモ履歴 */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {notesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="animate-spin text-orange-500" size={24} />
+                </div>
+              ) : notes.length === 0 ? (
+                <div className="text-center py-8">
+                  <StickyNote className="mx-auto text-gray-300 mb-2" size={32} />
+                  <p className="text-sm text-gray-400">メモはまだありません</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div
+                      key={note.id}
+                      className="bg-gray-50 rounded-xl px-4 py-3"
+                    >
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                        {note.text}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1.5">
+                        {note.createdAt ? formatDate(note.createdAt) : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-sm text-gray-500 mb-3">
         お客様: {customers.length}人
       </p>
@@ -155,7 +272,8 @@ function CustomersContent() {
           {customers.map((customer) => (
             <div
               key={customer.id}
-              className="bg-white rounded-xl px-4 py-3 shadow-sm"
+              className="bg-white rounded-xl px-4 py-3 shadow-sm cursor-pointer hover:bg-orange-50 transition-colors"
+              onClick={() => handleOpenNotes(customer)}
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-bold text-sm">
@@ -170,13 +288,19 @@ function CustomersContent() {
                     <span>累計 {formatPoints(customer.totalSpent)}pt</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setMessageTarget(customer)}
-                  className="text-purple-500 hover:text-purple-700 p-2"
-                  title="メッセージを送る"
-                >
-                  <MessageCircle size={20} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMessageTarget(customer);
+                    }}
+                    className="text-purple-500 hover:text-purple-700 p-2"
+                    title="メッセージを送る"
+                  >
+                    <MessageCircle size={20} />
+                  </button>
+                  <StickyNote size={16} className="text-gray-300" />
+                </div>
               </div>
               <div className="text-xs text-gray-400 mt-2 pl-13">
                 最終来店: {customer.lastVisit ? formatDate(customer.lastVisit) : "-"}
