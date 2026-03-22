@@ -272,13 +272,17 @@ export async function processPayment(
       updatedAt: Timestamp.now(),
     });
 
-    // 加盟店の売上残高を加算
+    // 加盟店の売上残高を加算（4%手数料を差し引き）
+    const feeRate = 0.04;
+    const fee = Math.floor(amount * feeRate);
+    const merchantReceive = amount - fee;
+
     const merchantRef = doc(db, "merchants", toMerchantId);
     const merchantSnap = await tx.get(merchantRef);
     if (merchantSnap.exists()) {
       const merchant = merchantSnap.data() as Merchant;
       tx.update(merchantRef, {
-        salesBalance: (merchant.salesBalance || 0) + amount,
+        salesBalance: (merchant.salesBalance || 0) + merchantReceive,
       });
     }
 
@@ -287,6 +291,8 @@ export async function processPayment(
       fromUserId,
       toMerchantId,
       amount,
+      fee,
+      merchantReceive,
       type: "payment",
       memo,
       createdAt: Timestamp.now(),
