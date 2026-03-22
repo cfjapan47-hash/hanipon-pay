@@ -65,12 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ),
         ]);
       } catch (liffErr) {
-        console.error("[Auth] LIFF init failed:", liffErr);
+        const errMsg = liffErr instanceof Error ? liffErr.message : String(liffErr);
+        console.error("[Auth] LIFF init failed:", errMsg);
         setState({
           liffUser: { userId: "guest", displayName: "ゲスト" },
           user: createFallbackUser("ゲスト"),
           loading: false,
-          error: null,
+          error: `LIFF初期化エラー: ${errMsg}`,
           status: "ゲストモード",
         });
         return;
@@ -87,12 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ),
         ]);
       } catch (profileErr) {
-        console.warn("[Auth] getProfile failed:", profileErr);
+        const errMsg = profileErr instanceof Error ? profileErr.message : String(profileErr);
+        console.warn("[Auth] getProfile failed:", errMsg);
         setState({
           liffUser: { userId: "guest", displayName: "ゲスト" },
           user: createFallbackUser("ゲスト"),
           loading: false,
-          error: null,
+          error: `プロフィール取得エラー: ${errMsg}`,
           status: "ゲストモード",
         });
         return;
