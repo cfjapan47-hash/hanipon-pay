@@ -54,7 +54,7 @@ function RegisterContent() {
         address: formData.address.trim(),
         category: formData.category.trim(),
         phone: formData.phone.trim(),
-        referrerId: referrerId || undefined,
+        referrerId: referrerId || "",
       });
       setQrCodeId(merchantId);
       setSuccess(true);
