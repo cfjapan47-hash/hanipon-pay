@@ -1,13 +1,8 @@
 import liff from "@line/liff";
 
-const LIFF_ID_CITIZEN = process.env.NEXT_PUBLIC_LIFF_ID || "2009557990-bY9jHDSg";
-const LIFF_ID_MERCHANT = process.env.NEXT_PUBLIC_LIFF_ID_MERCHANT || "2009557990-BN5K34LH";
+// LIFF IDを直接指定（環境変数の読み込み問題を回避）
+const LIFF_ID = "2009557990-bY9jHDSg";
 const IS_DEV = process.env.NODE_ENV === "development";
-
-function getLiffId(): string {
-  // 常に市民用LIFF IDで初期化（加盟店ページもアプリ内ナビで遷移）
-  return LIFF_ID_CITIZEN;
-}
 
 export interface LiffUser {
   userId: string;
@@ -21,8 +16,6 @@ let useMock = false;
 export async function initLiff(): Promise<void> {
   if (initialized) return;
 
-  const LIFF_ID = getLiffId();
-
   if (IS_DEV && !LIFF_ID) {
     console.log("[LIFF] Development mode: using mock user (no LIFF_ID)");
     useMock = true;
@@ -31,7 +24,7 @@ export async function initLiff(): Promise<void> {
   }
 
   try {
-    console.log("[LIFF] initializing with ID:", LIFF_ID, "path:", typeof window !== "undefined" ? window.location.pathname : "unknown");
+    console.log("[LIFF] initializing with ID:", LIFF_ID);
     await liff.init({ liffId: LIFF_ID });
     console.log("[LIFF] init success, isLoggedIn:", liff.isLoggedIn(), "isInClient:", liff.isInClient(), "token:", !!liff.getAccessToken());
 
