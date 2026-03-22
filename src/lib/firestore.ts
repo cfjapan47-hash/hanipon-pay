@@ -629,19 +629,19 @@ export async function getMerchantCoupons(
   const q = query(
     collection(db, "coupons"),
     where("merchantId", "==", merchantId),
-    orderBy("createdAt", "desc"),
     limit(50)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Coupon);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Coupon)
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 }
 
 export async function getActiveCoupons(): Promise<Coupon[]> {
   if (USE_MOCK) return [];
   const q = query(
     collection(db, "coupons"),
-    where("status", "==", "active"),
-    orderBy("endAt", "asc")
+    where("status", "==", "active")
   );
   const snap = await getDocs(q);
   const now = new Date();
@@ -651,7 +651,8 @@ export async function getActiveCoupons(): Promise<Coupon[]> {
       const end = c.endAt?.toDate();
       const start = c.startAt?.toDate();
       return end && end > now && start && start <= now && c.usedCount < c.maxUses;
-    });
+    })
+    .sort((a, b) => (a.endAt?.seconds || 0) - (b.endAt?.seconds || 0));
 }
 
 export async function getActiveCouponsByMerchant(
@@ -660,9 +661,7 @@ export async function getActiveCouponsByMerchant(
   if (USE_MOCK) return [];
   const q = query(
     collection(db, "coupons"),
-    where("merchantId", "==", merchantId),
-    where("status", "==", "active"),
-    orderBy("endAt", "asc")
+    where("merchantId", "==", merchantId)
   );
   const snap = await getDocs(q);
   const now = new Date();
@@ -671,8 +670,9 @@ export async function getActiveCouponsByMerchant(
     .filter((c) => {
       const end = c.endAt?.toDate();
       const start = c.startAt?.toDate();
-      return end && end > now && start && start <= now && c.usedCount < c.maxUses;
-    });
+      return c.status === "active" && end && end > now && start && start <= now && c.usedCount < c.maxUses;
+    })
+    .sort((a, b) => (a.endAt?.seconds || 0) - (b.endAt?.seconds || 0));
 }
 
 export async function useCoupon(
