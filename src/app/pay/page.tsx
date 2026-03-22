@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Navigation from "@/components/Navigation";
 import {
@@ -18,6 +18,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Ticket,
+  Keyboard,
 } from "lucide-react";
 
 type PayStep = "scan" | "amount" | "confirm" | "done" | "error";
@@ -36,6 +37,10 @@ function PayContent() {
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
   const [discount, setDiscount] = useState(0);
+  const [scanMode, setScanMode] = useState<"camera" | "manual">("camera");
+  const [scanning, setScanning] = useState(false);
+  const scannerRef = useRef<HTMLDivElement>(null);
+  const html5QrCodeRef = useRef<unknown>(null);
 
   const handleQrResult = useCallback(async (qrCodeId: string) => {
     try {
@@ -59,6 +64,50 @@ function PayContent() {
       setStep("error");
     }
   }, []);
+
+  // カメラスキャン
+  const startScanner = useCallback(async () => {
+    if (!scannerRef.current || scanning) return;
+    try {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const scanner = new Html5Qrcode("pay-qr-reader");
+      html5QrCodeRef.current = scanner;
+      setScanning(true);
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText: string) => {
+          scanner.stop().catch(() => {});
+          setScanning(false);
+          handleQrResult(decodedText);
+        },
+        () => {}
+      );
+    } catch (err) {
+      console.error("Scanner error:", err);
+      setScanning(false);
+      setScanMode("manual");
+    }
+  }, [scanning, handleQrResult]);
+
+  const stopScanner = useCallback(async () => {
+    const scanner = html5QrCodeRef.current as { stop: () => Promise<void> } | null;
+    if (scanner) {
+      try { await scanner.stop(); } catch {}
+      html5QrCodeRef.current = null;
+    }
+    setScanning(false);
+  }, []);
+
+  useEffect(() => {
+    if (step === "scan" && scanMode === "camera") {
+      const timer = setTimeout(() => startScanner(), 300);
+      return () => {
+        clearTimeout(timer);
+        stopScanner();
+      };
+    }
+  }, [step, scanMode]);
 
   const handleManualInput = () => {
     if (qrInput.trim()) {
@@ -143,28 +192,70 @@ function PayContent() {
 
       {step === "scan" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-            <Camera className="mx-auto text-gray-400 mb-4" size={48} />
-            <p className="text-gray-600 text-sm mb-4">
-              加盟店のQRコードを読み取るか、
-              <br />
-              店舗コードを入力してください
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-center text-gray-600 text-sm mb-4">
+              加盟店のQRコードをスキャンしてください
             </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="店舗コードを入力"
-                value={qrInput}
-                onChange={(e) => setQrInput(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-              />
+
+            {/* モード切替 */}
+            <div className="flex gap-2 mb-4">
               <button
-                onClick={handleManualInput}
-                className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors"
+                onClick={() => { stopScanner(); setScanMode("camera"); }}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-bold ${
+                  scanMode === "camera"
+                    ? "bg-orange-500 text-white"
+                    : "bg-gray-100 text-gray-600"
+                }`}
               >
-                検索
+                <Camera size={16} />
+                カメラ
+              </button>
+              <button
+                onClick={() => { stopScanner(); setScanMode("manual"); }}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-bold ${
+                  scanMode === "manual"
+                    ? "bg-orange-500 text-white"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                <Keyboard size={16} />
+                手入力
               </button>
             </div>
+
+            {scanMode === "camera" ? (
+              <div className="space-y-3">
+                <div
+                  id="pay-qr-reader"
+                  ref={scannerRef}
+                  className="w-full rounded-lg overflow-hidden bg-black min-h-[250px]"
+                />
+                {!scanning && (
+                  <button
+                    onClick={startScanner}
+                    className="w-full bg-orange-500 text-white rounded-lg py-3 font-bold"
+                  >
+                    カメラを起動
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="店舗コードを入力"
+                  value={qrInput}
+                  onChange={(e) => setQrInput(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-3 text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+                <button
+                  onClick={handleManualInput}
+                  className="w-full bg-orange-500 text-white rounded-lg py-3 font-bold hover:bg-orange-600 transition-colors"
+                >
+                  検索
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
