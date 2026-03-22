@@ -31,6 +31,17 @@ const AuthContext = createContext<AuthState>({
   error: null,
 });
 
+function createFallbackUser(liffUser: LiffUser): User {
+  return {
+    displayName: liffUser.displayName,
+    pictureUrl: liffUser.pictureUrl,
+    balance: 0,
+    role: "citizen",
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     liffUser: null,
@@ -48,7 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let user: User;
 
         if (USE_MOCK) {
-          // Firebase未設定時はモックデータを使用
           user = {
             displayName: liffUser.displayName,
             pictureUrl: liffUser.pictureUrl,
@@ -58,11 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             updatedAt: Timestamp.now(),
           };
         } else {
-          const { getOrCreateUser } = await import("@/lib/firestore");
-          user = await getOrCreateUser(liffUser.userId, {
-            displayName: liffUser.displayName,
-            pictureUrl: liffUser.pictureUrl,
-          });
+          try {
+            const { getOrCreateUser } = await import("@/lib/firestore");
+            user = await getOrCreateUser(liffUser.userId, {
+              displayName: liffUser.displayName,
+              pictureUrl: liffUser.pictureUrl,
+            });
+          } catch (firestoreErr) {
+            console.warn(
+              "[Auth] Firestore access failed, using fallback:",
+              firestoreErr
+            );
+            user = createFallbackUser(liffUser);
+          }
         }
 
         setState({ liffUser, user, loading: false, error: null });
