@@ -938,11 +938,12 @@ export async function getMerchantCustomers(
   const q = query(
     collection(db, "shopCustomers"),
     where("merchantId", "==", merchantId),
-    orderBy("lastVisit", "desc"),
     limit(100)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer)
+    .sort((a, b) => (b.lastVisit?.seconds || 0) - (a.lastVisit?.seconds || 0));
 }
 
 // ========== Favorite / お気に入り ==========
