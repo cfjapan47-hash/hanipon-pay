@@ -4,9 +4,10 @@ import { useEffect, useState, useRef } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import {
   getCitizenThreads,
-  getThreadMessages,
   sendMessage,
   markThreadRead,
+  onThreadMessages,
+  onCitizenThreads,
 } from "@/lib/firestore";
 import { formatDate } from "@/lib/utils";
 import type { MessageThread, Message } from "@/types";
@@ -31,28 +32,42 @@ function CitizenMessagesContent() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // スレッド一覧をリアルタイム監視
   useEffect(() => {
     if (!liffUser) return;
-    getCitizenThreads(liffUser.userId)
-      .then(setThreads)
-      .catch(console.error)
-      .finally(() => setFetching(false));
+    const unsub = onCitizenThreads(liffUser.userId, (t) => {
+      setThreads(t);
+      setFetching(false);
+    });
+    return () => unsub();
   }, [liffUser]);
+
+  // 選択中スレッドのメッセージをリアルタイム監視
+  useEffect(() => {
+    if (!liffUser || !selectedThread) return;
+    const unsub = onThreadMessages(
+      selectedThread.merchantId,
+      liffUser.userId,
+      (msgs) => {
+        setMessages(msgs);
+        setTimeout(
+          () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
+          100
+        );
+      }
+    );
+    markThreadRead(selectedThread.merchantId, liffUser.userId, "citizen");
+    return () => unsub();
+  }, [liffUser, selectedThread]);
 
   const openThread = async (thread: MessageThread) => {
     if (!liffUser) return;
     setSelectedThread(thread);
-    const msgs = await getThreadMessages(thread.merchantId, liffUser.userId);
-    setMessages(msgs);
     await markThreadRead(thread.merchantId, liffUser.userId, "citizen");
     setThreads((prev) =>
       prev.map((t) =>
         t.id === thread.id ? { ...t, unreadByCitizen: 0 } : t
       )
-    );
-    setTimeout(
-      () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-      100
     );
   };
 
@@ -70,17 +85,6 @@ function CitizenMessagesContent() {
         text: newMessage.trim(),
       });
       setNewMessage("");
-      const msgs = await getThreadMessages(
-        selectedThread.merchantId,
-        liffUser.userId
-      );
-      setMessages(msgs);
-      const t = await getCitizenThreads(liffUser.userId);
-      setThreads(t);
-      setTimeout(
-        () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-        100
-      );
     } catch (e) {
       console.error(e);
     } finally {

@@ -14,6 +14,7 @@ import {
   Timestamp,
   increment,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area } from "@/types";
@@ -874,6 +875,70 @@ export async function getCitizenThreads(
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
     .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+}
+
+// ========== リアルタイムリスナー ==========
+
+/**
+ * メッセージスレッドをリアルタイム監視
+ */
+export function onThreadMessages(
+  merchantId: string,
+  userId: string,
+  callback: (messages: Message[]) => void
+): () => void {
+  const threadId = getThreadId(merchantId, userId);
+  const q = query(
+    collection(db, "messages"),
+    where("threadId", "==", threadId),
+    limit(100)
+  );
+  return onSnapshot(q, (snap) => {
+    const messages = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as Message)
+      .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    callback(messages);
+  });
+}
+
+/**
+ * 加盟店のスレッド一覧をリアルタイム監視
+ */
+export function onMerchantThreads(
+  merchantId: string,
+  callback: (threads: MessageThread[]) => void
+): () => void {
+  const q = query(
+    collection(db, "messageThreads"),
+    where("merchantId", "==", merchantId),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    const threads = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+      .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+    callback(threads);
+  });
+}
+
+/**
+ * 市民のスレッド一覧をリアルタイム監視
+ */
+export function onCitizenThreads(
+  userId: string,
+  callback: (threads: MessageThread[]) => void
+): () => void {
+  const q = query(
+    collection(db, "messageThreads"),
+    where("userId", "==", userId),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    const threads = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+      .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+    callback(threads);
+  });
 }
 
 export async function markThreadRead(

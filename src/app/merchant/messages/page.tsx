@@ -4,10 +4,10 @@ import { useEffect, useState, useRef } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import {
   getMerchantByOwner,
-  getMerchantThreads,
-  getThreadMessages,
   sendMessage,
   markThreadRead,
+  onThreadMessages,
+  onMerchantThreads,
 } from "@/lib/firestore";
 import { formatDate } from "@/lib/utils";
 import type { Merchant, MessageThread, Message } from "@/types";
@@ -40,33 +40,46 @@ function MessagesContent() {
   useEffect(() => {
     if (!liffUser) return;
     getMerchantByOwner(liffUser.userId)
-      .then(async (m) => {
+      .then((m) => {
         setMerchant(m);
-        if (m) {
-          const t = await getMerchantThreads(m.id);
-          setThreads(t);
-        }
+        setFetching(false);
       })
-      .catch(console.error)
-      .finally(() => setFetching(false));
+      .catch((e) => { console.error(e); setFetching(false); });
   }, [liffUser]);
+
+  // スレッド一覧をリアルタイム監視
+  useEffect(() => {
+    if (!merchant) return;
+    const unsub = onMerchantThreads(merchant.id, (t) => setThreads(t));
+    return () => unsub();
+  }, [merchant]);
+
+  // 選択中スレッドのメッセージをリアルタイム監視
+  useEffect(() => {
+    if (!merchant || !selectedThread) return;
+    const unsub = onThreadMessages(
+      merchant.id,
+      selectedThread.userId,
+      (msgs) => {
+        setMessages(msgs);
+        setTimeout(
+          () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
+          100
+        );
+      }
+    );
+    markThreadRead(merchant.id, selectedThread.userId, "merchant");
+    return () => unsub();
+  }, [merchant, selectedThread]);
 
   const openThread = async (thread: MessageThread) => {
     if (!merchant) return;
     setSelectedThread(thread);
-    const msgs = await getThreadMessages(merchant.id, thread.userId);
-    setMessages(msgs);
-    // 既読にする
     await markThreadRead(merchant.id, thread.userId, "merchant");
-    // スレッドの未読を更新
     setThreads((prev) =>
       prev.map((t) =>
         t.id === thread.id ? { ...t, unreadByMerchant: 0 } : t
       )
-    );
-    setTimeout(
-      () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-      100
     );
   };
 
@@ -84,16 +97,6 @@ function MessagesContent() {
         text: newMessage.trim(),
       });
       setNewMessage("");
-      // メッセージを再取得
-      const msgs = await getThreadMessages(merchant.id, selectedThread.userId);
-      setMessages(msgs);
-      // スレッドリストも更新
-      const t = await getMerchantThreads(merchant.id);
-      setThreads(t);
-      setTimeout(
-        () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-        100
-      );
     } catch (e) {
       console.error(e);
     } finally {
