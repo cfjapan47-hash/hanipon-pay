@@ -96,15 +96,25 @@ function CustomersContent() {
     }
   };
 
+  const [noteError, setNoteError] = useState("");
+
   const handleAddNote = async () => {
     if (!merchant || !noteTarget || !noteText.trim()) return;
     setNoteSaving(true);
+    setNoteError("");
     try {
-      await addCustomerNote(merchant.id, noteTarget.userId, noteText.trim());
+      await Promise.race([
+        addCustomerNote(merchant.id, noteTarget.userId, noteText.trim()),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("タイムアウト")), 15000)
+        ),
+      ]);
+      setNoteText("");
       const fetched = await getCustomerNotes(merchant.id, noteTarget.userId);
       setNotes(fetched);
-      setNoteText("");
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setNoteError("メモの保存に失敗しました: " + msg);
       console.error(e);
     } finally {
       setNoteSaving(false);
@@ -220,6 +230,9 @@ function CustomersContent() {
                 )}
                 {noteSaving ? "保存中..." : "メモを追加"}
               </button>
+              {noteError && (
+                <p className="text-red-500 text-xs mt-2">{noteError}</p>
+              )}
             </div>
 
             {/* メモ履歴 */}
