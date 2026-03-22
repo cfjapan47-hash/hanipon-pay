@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote } from "lucide-react";
 import Link from "next/link";
 
 function MerchantContent() {
@@ -76,22 +76,40 @@ function MerchantContent() {
 
       <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg mb-4">
         <p className="text-sm opacity-90">{merchant.data.name}</p>
-        <div className="mt-4">
-          <p className="text-xs opacity-75">本日の売上</p>
-          <p className="text-3xl font-bold mt-1">
-            {formatPoints(todayTotal)}
-            <span className="text-lg ml-1">pt</span>
-          </p>
+        <div className="flex justify-between items-end mt-4">
+          <div>
+            <p className="text-xs opacity-75">本日の売上</p>
+            <p className="text-3xl font-bold mt-1">
+              {formatPoints(todayTotal)}
+              <span className="text-lg ml-1">pt</span>
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs opacity-75">売上残高</p>
+            <p className="text-xl font-bold mt-1">
+              {formatPoints(merchant.data.salesBalance || 0)}
+              <span className="text-sm ml-1">pt</span>
+            </p>
+          </div>
         </div>
       </div>
 
-      <Link
-        href={`/merchant/qr?id=${merchant.data.qrCodeId}`}
-        className="flex items-center justify-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm text-blue-600 font-medium mb-6 hover:bg-blue-50 transition-colors"
-      >
-        <QrCode size={20} />
-        店頭用QRコードを表示
-      </Link>
+      <div className="flex gap-3 mb-6">
+        <Link
+          href={`/merchant/qr?id=${merchant.data.qrCodeId}`}
+          className="flex-1 flex items-center justify-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
+        >
+          <QrCode size={18} />
+          QRコード
+        </Link>
+        <Link
+          href="/merchant/withdraw"
+          className="flex-1 flex items-center justify-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm text-green-600 font-medium hover:bg-green-50 transition-colors"
+        >
+          <Banknote size={18} />
+          換金申請
+        </Link>
+      </div>
 
       <h2 className="text-sm font-semibold text-gray-600 mb-3">取引一覧</h2>
       <div className="space-y-2">

@@ -23,9 +23,26 @@ export interface Merchant {
   qrCodeId: string;
   isActive: boolean;
   status?: MerchantStatus;
+  salesBalance?: number;
+  bankAccount?: string;
+  bankName?: string;
   referrerId?: string;
   referrerRewarded?: boolean;
   createdAt: Timestamp;
+}
+
+export type WithdrawalStatus = "pending" | "completed" | "rejected";
+
+export interface WithdrawalRequest {
+  id?: string;
+  merchantId: string;
+  merchantName: string;
+  amount: number;
+  bankAccount: string;
+  bankName: string;
+  status: WithdrawalStatus;
+  createdAt: Timestamp;
+  processedAt?: Timestamp;
 }
 
 export type TransactionType = "payment" | "grant" | "refund" | "referral_reward";

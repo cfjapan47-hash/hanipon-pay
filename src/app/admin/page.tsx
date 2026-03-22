@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { getSystemStats } from "@/lib/firestore";
 import { formatPoints } from "@/lib/utils";
-import { Loader2, Users, Store, ArrowRightLeft, Gift, List } from "lucide-react";
+import { Loader2, Users, Store, ArrowRightLeft, Gift, List, Banknote } from "lucide-react";
 import Link from "next/link";
 
 function AdminContent() {
@@ -109,6 +109,21 @@ function AdminContent() {
             <p className="font-medium text-gray-800">加盟店管理</p>
             <p className="text-xs text-gray-400">
               加盟店の登録・編集・承認
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/withdrawals"
+          className="flex items-center gap-3 bg-white rounded-xl px-4 py-4 shadow-sm hover:bg-green-50 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+            <Banknote size={18} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-800">換金申請管理</p>
+            <p className="text-xs text-gray-400">
+              加盟店からの換金申請を処理
             </p>
           </div>
         </Link>

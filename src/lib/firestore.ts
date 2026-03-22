@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -263,10 +263,21 @@ export async function processPayment(
     const user = userSnap.data() as User;
     if (user.balance < amount) throw new Error("ポイント残高が不足しています");
 
+    // 市民の残高を減算
     tx.update(userRef, {
       balance: user.balance - amount,
       updatedAt: Timestamp.now(),
     });
+
+    // 加盟店の売上残高を加算
+    const merchantRef = doc(db, "merchants", toMerchantId);
+    const merchantSnap = await tx.get(merchantRef);
+    if (merchantSnap.exists()) {
+      const merchant = merchantSnap.data() as Merchant;
+      tx.update(merchantRef, {
+        salesBalance: (merchant.salesBalance || 0) + amount,
+      });
+    }
 
     const txRef = doc(collection(db, "transactions"));
     tx.set(txRef, {
@@ -447,6 +458,91 @@ export async function getUserReferrals(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Referral);
+}
+
+// ========== Withdrawal (換金申請) ==========
+
+export async function createWithdrawalRequest(
+  merchantId: string,
+  merchantName: string,
+  amount: number,
+  bankAccount: string,
+  bankName: string
+): Promise<string> {
+  if (amount <= 0) throw new Error("換金額は1以上を指定してください");
+
+  if (USE_MOCK) {
+    console.log("[Mock] createWithdrawalRequest:", { merchantId, amount });
+    return "mock-withdrawal";
+  }
+
+  // 売上残高チェック & 減算をアトミックに
+  const wdId = await runTransaction(db, async (tx) => {
+    const merchantRef = doc(db, "merchants", merchantId);
+    const merchantSnap = await tx.get(merchantRef);
+    if (!merchantSnap.exists()) throw new Error("加盟店が見つかりません");
+
+    const merchant = merchantSnap.data() as Merchant;
+    const salesBalance = merchant.salesBalance || 0;
+    if (salesBalance < amount) throw new Error("売上残高が不足しています");
+
+    // 売上残高を減算
+    tx.update(merchantRef, {
+      salesBalance: salesBalance - amount,
+    });
+
+    // 換金申請を作成
+    const wdRef = doc(collection(db, "withdrawals"));
+    tx.set(wdRef, {
+      merchantId,
+      merchantName,
+      amount,
+      bankAccount,
+      bankName,
+      status: "pending",
+      createdAt: Timestamp.now(),
+    });
+
+    return wdRef.id;
+  });
+
+  return wdId;
+}
+
+export async function getMerchantWithdrawals(
+  merchantId: string
+): Promise<WithdrawalRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "withdrawals"),
+    where("merchantId", "==", merchantId),
+    orderBy("createdAt", "desc"),
+    limit(20)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WithdrawalRequest);
+}
+
+export async function getAllWithdrawals(): Promise<WithdrawalRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "withdrawals"),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WithdrawalRequest);
+}
+
+export async function processWithdrawal(
+  withdrawalId: string,
+  status: "completed" | "rejected"
+): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "withdrawals", withdrawalId), {
+    status,
+    processedAt: Timestamp.now(),
+  });
 }
 
 // ========== Stats ==========
