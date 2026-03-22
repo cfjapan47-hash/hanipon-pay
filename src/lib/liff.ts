@@ -33,8 +33,9 @@ export async function initLiff(): Promise<void> {
         initialized = true;
         return;
       }
-      // 本番環境: LINEログインにリダイレクト
-      liff.login();
+      // 本番環境: LINEログインにリダイレクト（現在のパスを保持）
+      const currentUrl = window.location.href;
+      liff.login({ redirectUri: currentUrl });
       return; // リダイレクト後は実行されない
     }
     initialized = true;
@@ -57,6 +58,15 @@ export async function getLiffUser(): Promise<LiffUser> {
       displayName: "テストユーザー",
       pictureUrl: undefined,
     };
+  }
+
+  // アクセストークンがない場合は再ログイン
+  const token = liff.getAccessToken();
+  if (!token) {
+    console.warn("[LIFF] No access token, triggering login");
+    const currentUrl = window.location.href;
+    liff.login({ redirectUri: currentUrl });
+    throw new Error("Re-login required");
   }
 
   try {
