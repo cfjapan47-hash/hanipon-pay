@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction } from "@/types";
+import type { User, Merchant, Transaction, Referral } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -334,6 +334,119 @@ export async function grantPoints(
   });
 
   return grantId;
+}
+
+// ========== Merchant Self-Registration ==========
+
+export async function registerMerchantSelf(data: {
+  name: string;
+  ownerUserId: string;
+  address: string;
+  category: string;
+  phone: string;
+  referrerId?: string;
+}): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] registerMerchantSelf:", data);
+    return "mock-self-merchant";
+  }
+
+  const qrCodeId = `hp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const merchantId = await createMerchant({
+    name: data.name,
+    ownerUserId: data.ownerUserId,
+    address: data.address,
+    category: data.category,
+    phone: data.phone,
+    qrCodeId,
+    isActive: true,
+    status: "pending",
+    referrerId: data.referrerId || undefined,
+    referrerRewarded: false,
+  });
+
+  // 紹介者がいる場合、紹介記録を保存
+  if (data.referrerId) {
+    await addDoc(collection(db, "referrals"), {
+      referrerId: data.referrerId,
+      merchantId,
+      merchantName: data.name,
+      reward: 500,
+      rewarded: false,
+      createdAt: Timestamp.now(),
+    });
+  }
+
+  return merchantId;
+}
+
+// ========== Referral Reward ==========
+
+const REFERRAL_REWARD = 500;
+
+export async function processReferralReward(
+  merchantId: string
+): Promise<void> {
+  if (USE_MOCK) return;
+
+  const merchant = await getMerchant(merchantId);
+  if (!merchant || !merchant.referrerId || merchant.referrerRewarded) return;
+
+  await runTransaction(db, async (tx) => {
+    const userRef = doc(db, "users", merchant.referrerId!);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) return;
+
+    const user = userSnap.data() as User;
+
+    // 紹介者に報酬付与
+    tx.update(userRef, {
+      balance: user.balance + REFERRAL_REWARD,
+      referralCount: (user.referralCount || 0) + 1,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 加盟店の報酬済みフラグを更新
+    tx.update(doc(db, "merchants", merchantId), {
+      referrerRewarded: true,
+    });
+
+    // トランザクション記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: "system",
+      toMerchantId: "",
+      amount: REFERRAL_REWARD,
+      type: "referral_reward",
+      memo: `加盟店紹介報酬: ${merchant.name}`,
+      createdAt: Timestamp.now(),
+    });
+  });
+
+  // 紹介記録を報酬済みに更新
+  const refQuery = query(
+    collection(db, "referrals"),
+    where("merchantId", "==", merchantId),
+    where("rewarded", "==", false),
+    limit(1)
+  );
+  const refSnap = await getDocs(refQuery);
+  if (!refSnap.empty) {
+    await updateDoc(refSnap.docs[0].ref, { rewarded: true });
+  }
+}
+
+export async function getUserReferrals(
+  userId: string
+): Promise<Referral[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "referrals"),
+    where("referrerId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Referral);
 }
 
 // ========== Stats ==========

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, QrCode, Clock } from "lucide-react";
+import { Home, QrCode, Clock, Gift } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "ホーム", icon: Home },
   { href: "/pay", label: "支払う", icon: QrCode },
+  { href: "/referral", label: "紹介", icon: Gift },
   { href: "/history", label: "履歴", icon: Clock },
 ];
 

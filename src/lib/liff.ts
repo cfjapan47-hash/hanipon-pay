@@ -24,15 +24,18 @@ export async function initLiff(): Promise<void> {
 
   try {
     await liff.init({ liffId: LIFF_ID });
+    console.log("[LIFF] init success, isLoggedIn:", liff.isLoggedIn(), "isInClient:", liff.isInClient());
+
     if (!liff.isLoggedIn()) {
       if (IS_DEV) {
-        // ローカル開発ではLINEログインできないのでモックに切替
         console.log("[LIFF] Development mode: not logged in, using mock user");
         useMock = true;
         initialized = true;
         return;
       }
+      // 本番環境: LINEログインにリダイレクト
       liff.login();
+      return; // リダイレクト後は実行されない
     }
     initialized = true;
   } catch (error) {
@@ -56,12 +59,17 @@ export async function getLiffUser(): Promise<LiffUser> {
     };
   }
 
-  const profile = await liff.getProfile();
-  return {
-    userId: profile.userId,
-    displayName: profile.displayName,
-    pictureUrl: profile.pictureUrl,
-  };
+  try {
+    const profile = await liff.getProfile();
+    return {
+      userId: profile.userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl,
+    };
+  } catch (error) {
+    console.error("[LIFF] getProfile failed:", error);
+    throw error;
+  }
 }
 
 export function closeLiff(): void {
