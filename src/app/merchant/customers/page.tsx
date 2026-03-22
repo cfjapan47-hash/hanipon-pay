@@ -180,8 +180,8 @@ function CustomersContent() {
 
       {/* 顧客メモモーダル */}
       {noteTarget && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center">
-          <div className="bg-white rounded-t-2xl w-full max-w-md max-h-[80vh] flex flex-col animate-in slide-in-from-bottom">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <StickyNote size={18} className="text-orange-500" />
