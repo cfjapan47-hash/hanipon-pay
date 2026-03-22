@@ -52,8 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      const timeout = (ms: number) =>
+        new Promise((_, reject) => setTimeout(() => reject(new Error("タイムアウト")), ms));
+
       try {
-        await initLiff();
+        await Promise.race([initLiff(), timeout(10000)]);
       } catch (liffErr) {
         console.error("[Auth] LIFF init failed:", liffErr);
         // LIFF初期化失敗時でもフォールバックで表示
@@ -96,10 +99,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         try {
           const { getOrCreateUser } = await import("@/lib/firestore");
-          user = await getOrCreateUser(liffUser.userId, {
-            displayName: liffUser.displayName,
-            pictureUrl: liffUser.pictureUrl,
-          });
+          user = await Promise.race([
+            getOrCreateUser(liffUser.userId, {
+              displayName: liffUser.displayName,
+              pictureUrl: liffUser.pictureUrl,
+            }),
+            timeout(8000).then(() => {
+              throw new Error("Firestore timeout");
+            }),
+          ]) as User;
         } catch (firestoreErr) {
           console.warn("[Auth] Firestore failed, using fallback:", firestoreErr);
           user = createFallbackUser(liffUser.displayName, liffUser.pictureUrl);

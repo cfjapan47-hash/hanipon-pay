@@ -36,8 +36,9 @@ export async function initLiff(): Promise<void> {
   }
 
   try {
+    console.log("[LIFF] initializing with ID:", LIFF_ID, "path:", typeof window !== "undefined" ? window.location.pathname : "unknown");
     await liff.init({ liffId: LIFF_ID });
-    console.log("[LIFF] init success, isLoggedIn:", liff.isLoggedIn(), "isInClient:", liff.isInClient());
+    console.log("[LIFF] init success, isLoggedIn:", liff.isLoggedIn(), "isInClient:", liff.isInClient(), "token:", !!liff.getAccessToken());
 
     if (!liff.isLoggedIn()) {
       if (IS_DEV) {
