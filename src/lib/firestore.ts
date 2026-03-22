@@ -12,6 +12,8 @@ import {
   addDoc,
   runTransaction,
   Timestamp,
+  increment,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer } from "@/types";
@@ -934,6 +936,72 @@ export async function getMerchantCustomers(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer);
+}
+
+// ========== Cash Charge (加盟店現金チャージ) ==========
+
+/**
+ * 加盟店が市民に現金チャージを行う
+ * - 市民の残高: +chargeAmount
+ * - 加盟店の売上残高: -(chargeAmount - fee)
+ * - 加盟店の手元現金: +chargeAmount（物理的に受け取る）
+ * - 手数料(2%): 加盟店の収益
+ */
+export async function processCashCharge(
+  merchantId: string,
+  merchantName: string,
+  citizenUserId: string,
+  chargeAmount: number,
+  feeRate: number = 0.02
+): Promise<string> {
+  if (USE_MOCK) return "mock-charge-id";
+
+  const fee = Math.floor(chargeAmount * feeRate);
+  const merchantDeduction = chargeAmount - fee;
+
+  const merchantRef = doc(db, "merchants", merchantId);
+  const userRef = doc(db, "users", citizenUserId);
+
+  return await runTransaction(db, async (transaction) => {
+    const merchantDoc = await transaction.get(merchantRef);
+    const userDoc = await transaction.get(userRef);
+
+    if (!merchantDoc.exists()) throw new Error("加盟店が見つかりません");
+    if (!userDoc.exists()) throw new Error("ユーザーが見つかりません");
+
+    const merchantData = merchantDoc.data();
+    const currentMerchantBalance = merchantData.salesBalance || 0;
+
+    if (currentMerchantBalance < merchantDeduction) {
+      throw new Error(
+        `加盟店の売上残高が不足しています（残高: ${currentMerchantBalance}pt、必要: ${merchantDeduction}pt）`
+      );
+    }
+
+    // 市民の残高を増やす
+    transaction.update(userRef, {
+      balance: increment(chargeAmount),
+      updatedAt: serverTimestamp(),
+    });
+
+    // 加盟店の売上残高を減らす
+    transaction.update(merchantRef, {
+      salesBalance: increment(-merchantDeduction),
+    });
+
+    // 取引履歴を記録
+    const txRef = doc(collection(db, "transactions"));
+    transaction.set(txRef, {
+      fromUserId: merchantId,
+      toMerchantId: citizenUserId,
+      amount: chargeAmount,
+      type: "cash_charge",
+      memo: `${merchantName}で現金チャージ（手数料${fee}pt）`,
+      createdAt: serverTimestamp(),
+    });
+
+    return txRef.id;
+  });
 }
 
 // ========== Stats ==========

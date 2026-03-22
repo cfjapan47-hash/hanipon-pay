@@ -45,7 +45,7 @@ export interface WithdrawalRequest {
   processedAt?: Timestamp;
 }
 
-export type TransactionType = "payment" | "grant" | "refund" | "referral_reward";
+export type TransactionType = "payment" | "grant" | "refund" | "referral_reward" | "cash_charge";
 
 export interface Transaction {
   id?: string;
