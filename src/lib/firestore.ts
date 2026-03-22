@@ -1127,6 +1127,80 @@ export async function getActiveShops(): Promise<{ id: string; data: Merchant }[]
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Merchant }));
 }
 
+/**
+ * 加盟店のプロフィール情報を更新（ホームページ機能用）
+ */
+export async function updateMerchantProfile(
+  merchantId: string,
+  data: {
+    description?: string;
+    businessHours?: { open: string; close: string };
+    closedDays?: string[];
+    snsLinks?: { instagram?: string; x?: string };
+    category?: string;
+  }
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] updateMerchantProfile:", merchantId, data);
+    return;
+  }
+  await updateDoc(doc(db, "merchants", merchantId), data);
+}
+
+/**
+ * 加盟店のお知らせを追加（最新5件を保持）
+ */
+export async function addMerchantAnnouncement(
+  merchantId: string,
+  text: string
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] addAnnouncement:", merchantId, text);
+    return;
+  }
+  const merchantRef = doc(db, "merchants", merchantId);
+  const snap = await getDoc(merchantRef);
+  if (!snap.exists()) throw new Error("加盟店が見つかりません");
+  const data = snap.data() as Merchant;
+  const existing = data.announcements || [];
+  const newAnnouncement = { text, createdAt: Timestamp.now() };
+  // 最新5件を保持
+  const updated = [newAnnouncement, ...existing].slice(0, 5);
+  await updateDoc(merchantRef, { announcements: updated });
+}
+
+/**
+ * 加盟店のお知らせを削除
+ */
+export async function deleteMerchantAnnouncement(
+  merchantId: string,
+  index: number
+): Promise<void> {
+  if (USE_MOCK) return;
+  const merchantRef = doc(db, "merchants", merchantId);
+  const snap = await getDoc(merchantRef);
+  if (!snap.exists()) throw new Error("加盟店が見つかりません");
+  const data = snap.data() as Merchant;
+  const existing = data.announcements || [];
+  existing.splice(index, 1);
+  await updateDoc(merchantRef, { announcements: existing });
+}
+
+/**
+ * 加盟店の詳細情報を取得（公開ページ用）
+ */
+export async function getMerchantWithId(
+  merchantId: string
+): Promise<{ id: string; data: Merchant } | null> {
+  if (USE_MOCK) {
+    const m = MOCK_MERCHANTS.find((m) => m.id === merchantId);
+    return m ? { id: m.id, data: m.data } : null;
+  }
+  const snap = await getDoc(doc(db, "merchants", merchantId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, data: snap.data() as Merchant };
+}
+
 // ========== Cash Charge (加盟店現金チャージ) ==========
 
 /**

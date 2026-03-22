@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -130,7 +130,7 @@ function MerchantContent() {
           <span className="text-xs">換金申請</span>
         </Link>
       </div>
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <Link
           href="/merchant/charge"
           className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-amber-600 font-medium hover:bg-amber-50 transition-colors"
@@ -153,6 +153,13 @@ function MerchantContent() {
           <span className="text-xs">顧客リスト</span>
         </Link>
       </div>
+      <Link
+        href="/merchant/profile"
+        className="flex items-center justify-center gap-2 bg-white border-2 border-blue-200 text-blue-600 rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-blue-50 transition-colors mb-6"
+      >
+        <UserCog size={18} />
+        プロフィール編集（店舗ホームページ）
+      </Link>
 
       <h2 className="text-sm font-semibold text-gray-600 mb-3">取引一覧</h2>
       <div className="space-y-2">

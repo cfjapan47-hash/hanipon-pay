@@ -32,6 +32,12 @@ export interface Merchant {
   areaName?: string; // エリア表示名（例: "本庄市"）
   referrerId?: string | null;
   referrerRewarded?: boolean;
+  // ホームページ機能用フィールド
+  description?: string; // 店舗紹介文
+  businessHours?: { open: string; close: string };
+  closedDays?: string[]; // ["月", "火"] 等
+  snsLinks?: { instagram?: string; x?: string };
+  announcements?: { text: string; createdAt: Timestamp }[];
   createdAt: Timestamp;
 }
 

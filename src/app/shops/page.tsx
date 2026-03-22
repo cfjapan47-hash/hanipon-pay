@@ -1,95 +1,106 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Navigation from "@/components/Navigation";
 import {
   getActiveShops,
   getUserFavoriteShops,
-  favoriteShop,
-  sendMessage,
+  getActiveCouponsByMerchant,
 } from "@/lib/firestore";
-import type { Merchant, ShopCustomer } from "@/types";
+import type { Merchant } from "@/types";
 import {
   Loader2,
   Heart,
-  HeartOff,
-  MessageCircle,
   MapPin,
   Store,
-  Send,
-  X,
+  Search,
+  Filter,
+  Clock,
+  Ticket,
+  ChevronRight,
 } from "lucide-react";
+import Link from "next/link";
+
+const CATEGORIES = ["すべて", "飲食", "小売", "サービス", "その他"];
 
 function ShopsContent() {
-  const { liffUser, user, loading } = useAuth();
+  const { liffUser, loading } = useAuth();
   const [shops, setShops] = useState<{ id: string; data: Merchant }[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [couponShops, setCouponShops] = useState<Set<string>>(new Set());
   const [fetching, setFetching] = useState(true);
-  const [processing, setProcessing] = useState<string | null>(null);
 
-  // メッセージモーダル
-  const [msgShop, setMsgShop] = useState<{ id: string; data: Merchant } | null>(null);
-  const [msgText, setMsgText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [msgSent, setMsgSent] = useState(false);
+  // フィルター状態
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("すべて");
+  const [showOpenOnly, setShowOpenOnly] = useState(false);
+  const [showCouponOnly, setShowCouponOnly] = useState(false);
 
   useEffect(() => {
     if (!liffUser) return;
     Promise.all([getActiveShops(), getUserFavoriteShops(liffUser.userId)])
-      .then(([shopList, favList]) => {
+      .then(async ([shopList, favList]) => {
         setShops(shopList);
         const favSet = new Set(favList.map((f) => f.merchantId));
         setFavorites(favSet);
+
+        // クーポンがある店舗をチェック
+        const couponSet = new Set<string>();
+        await Promise.all(
+          shopList.map(async (shop) => {
+            try {
+              const coupons = await getActiveCouponsByMerchant(shop.id);
+              if (coupons.length > 0) {
+                couponSet.add(shop.id);
+              }
+            } catch {
+              // ignore
+            }
+          })
+        );
+        setCouponShops(couponSet);
       })
       .catch(console.error)
       .finally(() => setFetching(false));
   }, [liffUser]);
 
-  const handleFavorite = async (shopId: string) => {
-    if (!liffUser || !user) return;
-    setProcessing(shopId);
-    try {
-      await favoriteShop(
-        liffUser.userId,
-        user.displayName,
-        user.pictureUrl,
-        shopId
-      );
-      setFavorites((prev) => new Set([...prev, shopId]));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setProcessing(null);
-    }
+  // 今日が営業中かチェック
+  const isOpenToday = (shop: Merchant): boolean => {
+    const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+    const today = dayNames[new Date().getDay()];
+    if (shop.closedDays?.includes(today)) return false;
+    if (!shop.businessHours) return true; // 営業時間未設定の場合は営業中とみなす
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    return currentTime >= shop.businessHours.open && currentTime <= shop.businessHours.close;
   };
 
-  const handleSendMessage = async () => {
-    if (!liffUser || !user || !msgShop || !msgText.trim()) return;
-    setSending(true);
-    try {
-      // お気に入り登録されていなければ先に登録
-      if (!favorites.has(msgShop.id)) {
-        await favoriteShop(liffUser.userId, user.displayName, user.pictureUrl, msgShop.id);
-        setFavorites((prev) => new Set([...prev, msgShop.id]));
+  // フィルター適用
+  const filteredShops = useMemo(() => {
+    return shops.filter((shop) => {
+      // キーワード検索
+      if (
+        searchQuery &&
+        !shop.data.name.toLowerCase().includes(searchQuery.toLowerCase())
+      ) {
+        return false;
       }
-      await sendMessage({
-        merchantId: msgShop.id,
-        merchantName: msgShop.data.name,
-        userId: liffUser.userId,
-        userName: user.displayName,
-        senderType: "citizen",
-        senderId: liffUser.userId,
-        text: msgText.trim(),
-      });
-      setMsgSent(true);
-      setMsgText("");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSending(false);
-    }
-  };
+      // カテゴリフィルター
+      if (selectedCategory !== "すべて" && shop.data.category !== selectedCategory) {
+        return false;
+      }
+      // 営業中フィルター
+      if (showOpenOnly && !isOpenToday(shop.data)) {
+        return false;
+      }
+      // クーポンありフィルター
+      if (showCouponOnly && !couponShops.has(shop.id)) {
+        return false;
+      }
+      return true;
+    });
+  }, [shops, searchQuery, selectedCategory, showOpenOnly, showCouponOnly, couponShops]);
 
   if (loading || fetching) {
     return (
@@ -103,117 +114,143 @@ function ShopsContent() {
     <div className="max-w-md mx-auto px-4 pt-6 pb-24">
       <h1 className="text-xl font-bold text-gray-800 mb-4">加盟店一覧</h1>
 
-      {shops.length === 0 ? (
+      {/* 検索 */}
+      <div className="relative mb-3">
+        <Search
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+        />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="店舗名で検索..."
+          className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+
+      {/* カテゴリフィルター */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              selectedCategory === cat
+                ? "bg-blue-500 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* トグルフィルター */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setShowOpenOnly(!showOpenOnly)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            showOpenOnly
+              ? "bg-green-500 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+          }`}
+        >
+          <Clock size={12} />
+          今日営業中
+        </button>
+        <button
+          onClick={() => setShowCouponOnly(!showCouponOnly)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            showCouponOnly
+              ? "bg-orange-500 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+          }`}
+        >
+          <Ticket size={12} />
+          クーポンあり
+        </button>
+      </div>
+
+      {/* 結果件数 */}
+      <p className="text-xs text-gray-400 mb-3">
+        {filteredShops.length}件の加盟店
+      </p>
+
+      {/* 店舗一覧 */}
+      {filteredShops.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
           <Store className="mx-auto text-gray-400 mb-3" size={40} />
-          <p className="text-gray-500">加盟店がまだありません</p>
+          <p className="text-gray-500">
+            {shops.length === 0
+              ? "加盟店がまだありません"
+              : "条件に一致する加盟店がありません"}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {shops.map((shop) => {
+          {filteredShops.map((shop) => {
             const isFav = favorites.has(shop.id);
+            const hasCoupon = couponShops.has(shop.id);
+            const open = isOpenToday(shop.data);
             return (
-              <div key={shop.id} className="bg-white rounded-xl p-4 shadow-sm">
+              <Link
+                key={shop.id}
+                href={`/shop/${shop.id}`}
+                className="block bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+              >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="font-bold text-gray-800">{shop.data.name}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-bold text-gray-800 truncate">
+                        {shop.data.name}
+                      </p>
+                      {isFav && (
+                        <Heart
+                          size={14}
+                          className="text-pink-500 flex-shrink-0"
+                          fill="currentColor"
+                        />
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
                       <MapPin size={12} />
                       {shop.data.address || "住所未設定"}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {shop.data.category} {shop.data.areaName && `・${shop.data.areaName}`}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-3">
-                  {isFav ? (
-                    <div className="flex items-center gap-1 text-xs text-pink-500 bg-pink-50 rounded-lg px-3 py-2">
-                      <Heart size={14} fill="currentColor" />
-                      お気に入り済み
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleFavorite(shop.id)}
-                      disabled={processing === shop.id}
-                      className="flex items-center gap-1 text-xs text-pink-500 bg-pink-50 rounded-lg px-3 py-2 hover:bg-pink-100 disabled:opacity-50"
-                    >
-                      {processing === shop.id ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Heart size={14} />
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                        {shop.data.category}
+                      </span>
+                      {shop.data.areaName && (
+                        <span className="text-xs text-gray-400">
+                          {shop.data.areaName}
+                        </span>
                       )}
-                      お気に入り
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { setMsgShop(shop); setMsgSent(false); }}
-                    className="flex items-center gap-1 text-xs text-blue-500 bg-blue-50 rounded-lg px-3 py-2 hover:bg-blue-100"
-                  >
-                    <MessageCircle size={14} />
-                    メッセージ
-                  </button>
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          open
+                            ? "bg-green-50 text-green-600"
+                            : "bg-gray-50 text-gray-400"
+                        }`}
+                      >
+                        {open ? "営業中" : "営業時間外"}
+                      </span>
+                      {hasCoupon && (
+                        <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                          <Ticket size={10} />
+                          クーポン
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight
+                    size={18}
+                    className="text-gray-300 flex-shrink-0 mt-1"
+                  />
                 </div>
-              </div>
+              </Link>
             );
           })}
-        </div>
-      )}
-
-      {/* メッセージモーダル */}
-      {msgShop && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="font-bold text-gray-800">{msgShop.data.name}</p>
-                <p className="text-xs text-gray-400">にメッセージを送る</p>
-              </div>
-              <button onClick={() => { setMsgShop(null); setMsgSent(false); }}
-                className="text-gray-400">
-                <X size={24} />
-              </button>
-            </div>
-
-            {msgSent ? (
-              <div className="text-center py-6">
-                <Send className="mx-auto text-green-500 mb-3" size={32} />
-                <p className="font-bold text-green-600">送信しました！</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  お店からの返信をお待ちください
-                </p>
-                <button onClick={() => { setMsgShop(null); setMsgSent(false); }}
-                  className="mt-4 bg-gray-100 text-gray-600 rounded-lg px-6 py-2 text-sm font-bold">
-                  閉じる
-                </button>
-              </div>
-            ) : (
-              <>
-                <textarea
-                  value={msgText}
-                  onChange={(e) => setMsgText(e.target.value)}
-                  placeholder="メッセージを入力..."
-                  rows={3}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={sending || !msgText.trim()}
-                  className="w-full mt-3 bg-blue-500 text-white rounded-lg py-3 font-bold disabled:bg-gray-300 flex items-center justify-center gap-2"
-                >
-                  {sending ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Send size={16} />
-                      送信
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </div>
         </div>
       )}
 
