@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -175,6 +175,15 @@ function MerchantContent() {
             </div>
           ))
         )}
+      </div>
+      <div className="mt-6 mb-20 text-center">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-orange-600 transition-colors"
+        >
+          <Home size={16} />
+          市民画面に切り替え
+        </Link>
       </div>
       <MerchantNavigation />
     </div>
