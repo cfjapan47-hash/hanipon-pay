@@ -1,7 +1,18 @@
 import liff from "@line/liff";
 
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
+const LIFF_ID_CITIZEN = process.env.NEXT_PUBLIC_LIFF_ID || "";
+const LIFF_ID_MERCHANT = process.env.NEXT_PUBLIC_LIFF_ID_MERCHANT || "";
 const IS_DEV = process.env.NODE_ENV === "development";
+
+function getLiffId(): string {
+  if (typeof window !== "undefined") {
+    const path = window.location.pathname;
+    if (path.startsWith("/merchant") || path.startsWith("/register-shop")) {
+      return LIFF_ID_MERCHANT || LIFF_ID_CITIZEN;
+    }
+  }
+  return LIFF_ID_CITIZEN;
+}
 
 export interface LiffUser {
   userId: string;
@@ -14,6 +25,8 @@ let useMock = false;
 
 export async function initLiff(): Promise<void> {
   if (initialized) return;
+
+  const LIFF_ID = getLiffId();
 
   if (IS_DEV && !LIFF_ID) {
     console.log("[LIFF] Development mode: using mock user (no LIFF_ID)");

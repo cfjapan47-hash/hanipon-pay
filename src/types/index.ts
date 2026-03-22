@@ -26,7 +26,7 @@ export interface Merchant {
   salesBalance?: number;
   bankAccount?: string;
   bankName?: string;
-  referrerId?: string;
+  referrerId?: string | null;
   referrerRewarded?: boolean;
   createdAt: Timestamp;
 }

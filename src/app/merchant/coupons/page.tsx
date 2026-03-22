@@ -22,6 +22,7 @@ import {
   Ticket,
 } from "lucide-react";
 import Link from "next/link";
+import MerchantNavigation from "@/components/MerchantNavigation";
 
 function CouponContent() {
   const { liffUser, loading } = useAuth();
@@ -208,7 +209,7 @@ function CouponContent() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-6 pb-8">
+    <div className="max-w-md mx-auto px-4 pt-6 pb-24">
       <div className="flex items-center gap-3 mb-4">
         <Link href="/merchant" className="text-gray-500 hover:text-gray-700">
           <ArrowLeft size={20} />
@@ -450,6 +451,7 @@ function CouponContent() {
           ))
         )}
       </div>
+      <MerchantNavigation />
     </div>
   );
 }

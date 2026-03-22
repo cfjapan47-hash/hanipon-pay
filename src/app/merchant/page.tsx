@@ -10,6 +10,7 @@ import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
 import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users } from "lucide-react";
 import Link from "next/link";
+import MerchantNavigation from "@/components/MerchantNavigation";
 
 function MerchantContent() {
   const { liffUser, loading } = useAuth();
@@ -71,7 +72,7 @@ function MerchantContent() {
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-6 pb-8">
+    <div className="max-w-md mx-auto px-4 pt-6 pb-24">
       <h1 className="text-xl font-bold text-gray-800 mb-4">加盟店管理</h1>
 
       <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg mb-4">
@@ -156,6 +157,7 @@ function MerchantContent() {
           ))
         )}
       </div>
+      <MerchantNavigation />
     </div>
   );
 }

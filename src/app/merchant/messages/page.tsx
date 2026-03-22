@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import MerchantNavigation from "@/components/MerchantNavigation";
 
 function MessagesContent() {
   const { liffUser, loading } = useAuth();
@@ -215,13 +216,8 @@ function MessagesContent() {
 
   // スレッド一覧
   return (
-    <div className="max-w-md mx-auto px-4 pt-6 pb-8">
-      <div className="flex items-center gap-3 mb-4">
-        <Link href="/merchant" className="text-gray-500 hover:text-gray-700">
-          <ArrowLeft size={20} />
-        </Link>
-        <h1 className="text-xl font-bold text-gray-800">メッセージ</h1>
-      </div>
+    <div className="max-w-md mx-auto px-4 pt-6 pb-24">
+      <h1 className="text-xl font-bold text-gray-800 mb-4">メッセージ</h1>
 
       {threads.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
@@ -266,6 +262,7 @@ function MessagesContent() {
           ))}
         </div>
       )}
+      <MerchantNavigation />
     </div>
   );
 }
