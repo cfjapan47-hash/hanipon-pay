@@ -5,13 +5,7 @@ const LIFF_ID_MERCHANT = process.env.NEXT_PUBLIC_LIFF_ID_MERCHANT || "2009557990
 const IS_DEV = process.env.NODE_ENV === "development";
 
 function getLiffId(): string {
-  if (typeof window !== "undefined") {
-    const path = window.location.pathname;
-    console.log("[LIFF] getLiffId path:", path, "merchant:", LIFF_ID_MERCHANT, "citizen:", LIFF_ID_CITIZEN);
-    if (path.startsWith("/merchant") || path.startsWith("/register-shop")) {
-      return LIFF_ID_MERCHANT;
-    }
-  }
+  // 常に市民用LIFF IDで初期化（加盟店ページもアプリ内ナビで遷移）
   return LIFF_ID_CITIZEN;
 }
 
