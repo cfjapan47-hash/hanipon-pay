@@ -7,7 +7,7 @@ import BalanceCard from "@/components/BalanceCard";
 import TransactionList from "@/components/TransactionList";
 import { getUserTransactions } from "@/lib/firestore";
 import type { Transaction } from "@/types";
-import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X } from "lucide-react";
+import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
@@ -114,6 +114,13 @@ function HomeContent() {
             加盟店登録
           </Link>
         )}
+        <Link
+          href="/charge"
+          className="flex items-center gap-2 bg-yellow-50 text-yellow-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-yellow-100 transition-colors"
+        >
+          <Banknote size={18} />
+          チャージ
+        </Link>
         <Link
           href="/referral"
           className="flex items-center gap-2 bg-orange-50 text-orange-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-orange-100 transition-colors"

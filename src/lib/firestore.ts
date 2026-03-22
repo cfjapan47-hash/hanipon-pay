@@ -17,7 +17,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -1383,4 +1383,115 @@ export async function getCustomerNotes(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CustomerNote);
+}
+
+// ========== Charge Requests (銀行振込チャージ) ==========
+
+export async function createChargeRequest(
+  userId: string,
+  userName: string,
+  amount: number
+): Promise<string> {
+  if (amount <= 0) throw new Error("チャージ金額は1以上を指定してください");
+
+  if (USE_MOCK) {
+    console.log("[Mock] createChargeRequest:", { userId, userName, amount });
+    return "mock-charge-request";
+  }
+
+  const ref = await addDoc(collection(db, "chargeRequests"), {
+    userId,
+    userName,
+    amount,
+    status: "pending",
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getChargeRequests(
+  userId: string
+): Promise<ChargeRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "chargeRequests"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(20)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChargeRequest);
+}
+
+export async function getPendingChargeRequests(): Promise<ChargeRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "chargeRequests"),
+    where("status", "==", "pending"),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChargeRequest);
+}
+
+export async function approveChargeRequest(
+  requestId: string,
+  adminId: string
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] approveChargeRequest:", { requestId, adminId });
+    return;
+  }
+
+  await runTransaction(db, async (tx) => {
+    const reqRef = doc(db, "chargeRequests", requestId);
+    const reqSnap = await tx.get(reqRef);
+    if (!reqSnap.exists()) throw new Error("チャージ申請が見つかりません");
+
+    const req = reqSnap.data() as ChargeRequest;
+    if (req.status !== "pending") throw new Error("この申請は既に処理済みです");
+
+    const userRef = doc(db, "users", req.userId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("対象ユーザーが見つかりません");
+
+    const user = userSnap.data() as User;
+
+    // ユーザーの残高を加算
+    tx.update(userRef, {
+      balance: user.balance + req.amount,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 申請を承認済みに更新
+    tx.update(reqRef, {
+      status: "approved",
+      approvedAt: Timestamp.now(),
+      approvedBy: adminId,
+    });
+
+    // トランザクション記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: "system",
+      toMerchantId: "",
+      amount: req.amount,
+      type: "cash_charge",
+      memo: `銀行振込チャージ`,
+      createdAt: Timestamp.now(),
+    });
+  });
+}
+
+export async function rejectChargeRequest(
+  requestId: string
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] rejectChargeRequest:", requestId);
+    return;
+  }
+  await updateDoc(doc(db, "chargeRequests", requestId), {
+    status: "rejected",
+  });
 }

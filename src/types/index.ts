@@ -59,6 +59,21 @@ export interface WithdrawalRequest {
   processedAt?: Timestamp;
 }
 
+// ========== Charge Request (銀行振込チャージ) ==========
+
+export type ChargeRequestStatus = "pending" | "approved" | "rejected";
+
+export interface ChargeRequest {
+  id?: string;
+  userId: string;
+  userName: string;
+  amount: number;
+  status: ChargeRequestStatus;
+  createdAt: Timestamp;
+  approvedAt?: Timestamp;
+  approvedBy?: string;
+}
+
 export type TransactionType = "payment" | "grant" | "refund" | "referral_reward" | "cash_charge";
 
 export interface Transaction {
