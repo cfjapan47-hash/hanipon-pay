@@ -31,10 +31,10 @@ const AuthContext = createContext<AuthState>({
   error: null,
 });
 
-function createFallbackUser(liffUser: LiffUser): User {
+function createFallbackUser(displayName: string, pictureUrl?: string): User {
   return {
-    displayName: liffUser.displayName,
-    pictureUrl: liffUser.pictureUrl,
+    displayName,
+    pictureUrl,
     balance: 0,
     role: "citizen",
     createdAt: Timestamp.now(),
@@ -54,45 +54,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function init() {
       try {
         await initLiff();
-        const liffUser = await getLiffUser();
+      } catch (liffErr) {
+        console.error("[Auth] LIFF init failed:", liffErr);
+        // LIFF初期化失敗時でもフォールバックで表示
+        const fallbackUser = createFallbackUser("ゲスト");
+        setState({
+          liffUser: { userId: "guest", displayName: "ゲスト" },
+          user: fallbackUser,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
 
-        let user: User;
+      let liffUser: LiffUser;
+      try {
+        liffUser = await getLiffUser();
+      } catch (profileErr) {
+        console.warn("[Auth] getProfile failed, using guest:", profileErr);
+        // プロフィール取得失敗時もフォールバック
+        const fallbackUser = createFallbackUser("ゲスト");
+        setState({
+          liffUser: { userId: "guest", displayName: "ゲスト" },
+          user: fallbackUser,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
 
-        if (USE_MOCK) {
-          user = {
+      let user: User;
+      if (USE_MOCK) {
+        user = {
+          displayName: liffUser.displayName,
+          pictureUrl: liffUser.pictureUrl,
+          balance: 5000,
+          role: "admin",
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        };
+      } else {
+        try {
+          const { getOrCreateUser } = await import("@/lib/firestore");
+          user = await getOrCreateUser(liffUser.userId, {
             displayName: liffUser.displayName,
             pictureUrl: liffUser.pictureUrl,
-            balance: 5000,
-            role: "admin",
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          };
-        } else {
-          try {
-            const { getOrCreateUser } = await import("@/lib/firestore");
-            user = await getOrCreateUser(liffUser.userId, {
-              displayName: liffUser.displayName,
-              pictureUrl: liffUser.pictureUrl,
-            });
-          } catch (firestoreErr) {
-            console.warn(
-              "[Auth] Firestore access failed, using fallback:",
-              firestoreErr
-            );
-            user = createFallbackUser(liffUser);
-          }
+          });
+        } catch (firestoreErr) {
+          console.warn("[Auth] Firestore failed, using fallback:", firestoreErr);
+          user = createFallbackUser(liffUser.displayName, liffUser.pictureUrl);
         }
-
-        setState({ liffUser, user, loading: false, error: null });
-      } catch (err) {
-        console.error("[Auth] initialization failed:", err);
-        setState({
-          liffUser: null,
-          user: null,
-          loading: false,
-          error: "認証に失敗しました",
-        });
       }
+
+      setState({ liffUser, user, loading: false, error: null });
     }
     init();
   }, []);
