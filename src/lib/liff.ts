@@ -69,26 +69,52 @@ export async function getLiffUser(): Promise<LiffUser> {
     };
   }
 
-  // アクセストークンがない場合は再ログイン
-  const token = liff.getAccessToken();
-  if (!token) {
-    console.warn("[LIFF] No access token, triggering login");
-    const currentUrl = window.location.href;
-    liff.login({ redirectUri: currentUrl });
-    throw new Error("Re-login required");
-  }
+  console.log("[LIFF] getLiffUser: isLoggedIn:", liff.isLoggedIn(), "isInClient:", liff.isInClient(), "token:", !!liff.getAccessToken());
 
+  // 方法1: getProfile()を試す
   try {
     const profile = await liff.getProfile();
+    console.log("[LIFF] getProfile success:", profile.displayName);
     return {
       userId: profile.userId,
       displayName: profile.displayName,
       pictureUrl: profile.pictureUrl,
     };
-  } catch (error) {
-    console.error("[LIFF] getProfile failed:", error);
-    throw error;
+  } catch (err1) {
+    console.warn("[LIFF] getProfile failed:", err1);
   }
+
+  // 方法2: IDトークンからユーザー情報を取得
+  try {
+    const decoded = liff.getDecodedIDToken();
+    if (decoded?.sub && decoded?.name) {
+      console.log("[LIFF] Using decoded ID token:", decoded.name);
+      return {
+        userId: decoded.sub,
+        displayName: decoded.name,
+        pictureUrl: decoded.picture,
+      };
+    }
+  } catch (err2) {
+    console.warn("[LIFF] getDecodedIDToken failed:", err2);
+  }
+
+  // 方法3: コンテキストからユーザーIDを取得
+  try {
+    const context = liff.getContext();
+    if (context?.userId) {
+      console.log("[LIFF] Using context userId:", context.userId);
+      return {
+        userId: context.userId,
+        displayName: "ユーザー",
+        pictureUrl: undefined,
+      };
+    }
+  } catch (err3) {
+    console.warn("[LIFF] getContext failed:", err3);
+  }
+
+  throw new Error("ユーザー情報を取得できませんでした");
 }
 
 export function closeLiff(): void {
