@@ -838,11 +838,12 @@ export async function getThreadMessages(
   const q = query(
     collection(db, "messages"),
     where("threadId", "==", threadId),
-    orderBy("createdAt", "asc"),
     limit(maxCount)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Message);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Message)
+    .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
 }
 
 export async function getMerchantThreads(
@@ -852,11 +853,12 @@ export async function getMerchantThreads(
   const q = query(
     collection(db, "messageThreads"),
     where("merchantId", "==", merchantId),
-    orderBy("lastMessageAt", "desc"),
     limit(50)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MessageThread);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+    .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
 }
 
 export async function getCitizenThreads(
@@ -866,11 +868,12 @@ export async function getCitizenThreads(
   const q = query(
     collection(db, "messageThreads"),
     where("userId", "==", userId),
-    orderBy("lastMessageAt", "desc"),
     limit(50)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MessageThread);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as MessageThread)
+    .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
 }
 
 export async function markThreadRead(
