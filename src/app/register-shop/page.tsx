@@ -48,20 +48,25 @@ function RegisterContent() {
     setSaving(true);
     setErrorMsg("");
     try {
-      const merchantId = await registerMerchantSelf({
-        name: formData.name.trim(),
-        ownerUserId: liffUser.userId,
-        address: formData.address.trim(),
-        category: formData.category.trim(),
-        phone: formData.phone.trim(),
-        referrerId: referrerId || "",
-      });
+      const merchantId = await Promise.race([
+        registerMerchantSelf({
+          name: formData.name.trim(),
+          ownerUserId: liffUser.userId,
+          address: formData.address.trim(),
+          category: formData.category.trim(),
+          phone: formData.phone.trim(),
+          referrerId: referrerId || "",
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("登録がタイムアウトしました。Firestoreへの接続に問題がある可能性があります。")), 15000)
+        ),
+      ]);
       setQrCodeId(merchantId);
       setSuccess(true);
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "登録に失敗しました"
-      );
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(msg);
+      console.error("[RegisterShop] Error:", msg, err);
     } finally {
       setSaving(false);
     }
