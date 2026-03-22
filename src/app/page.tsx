@@ -48,7 +48,7 @@ function HomeContent() {
 
   return (
     <div className="max-w-md mx-auto px-4 pt-6 pb-24">
-      <h1 className="text-xl font-bold text-gray-800 mb-4">はにぽんPay</h1>
+      <h1 className="text-xl font-bold text-gray-800 mb-4">はにぽんありがとうPay</h1>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-xs text-red-600 break-all">

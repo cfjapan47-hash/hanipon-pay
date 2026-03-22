@@ -18,7 +18,7 @@ export default function BalanceCard({ balance, displayName }: BalanceCardProps) 
           <span className="text-lg ml-1">pt</span>
         </p>
       </div>
-      <p className="text-xs opacity-60 mt-4">はにぽんPay</p>
+      <p className="text-xs opacity-60 mt-4">はにぽんありがとうPay</p>
     </div>
   );
 }

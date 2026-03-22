@@ -8,8 +8,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "はにぽんPay",
-  description: "本庄市の地域デジタル通貨「はにぽんPay」",
+  title: "はにぽんありがとうPay",
+  description: "本庄市の地域デジタル通貨「はにぽんありがとうPay」",
 };
 
 export default function RootLayout({

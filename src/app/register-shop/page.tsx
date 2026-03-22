@@ -105,7 +105,7 @@ function RegisterContent() {
         <Store className="mx-auto text-orange-500 mb-3" size={48} />
         <h1 className="text-xl font-bold text-gray-800">加盟店登録</h1>
         <p className="text-sm text-gray-500 mt-1">
-          はにぽんPayの加盟店に無料登録できます
+          はにぽんありがとうPayの加盟店に無料登録できます
         </p>
       </div>
 
