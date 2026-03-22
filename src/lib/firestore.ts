@@ -17,7 +17,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -1499,5 +1499,208 @@ export async function rejectChargeRequest(
   }
   await updateDoc(doc(db, "chargeRequests", requestId), {
     status: "rejected",
+  });
+}
+
+// ========== Cards (紙カード) ==========
+
+/** 最大カード番号を取得して次の番号を決定 */
+async function getNextCardNumber(): Promise<number> {
+  const q = query(
+    collection(db, "cards"),
+    orderBy("cardNumber", "desc"),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return 1;
+  const lastCard = snap.docs[0].data() as Card;
+  const lastNum = parseInt(lastCard.cardNumber.replace("HANIPON-", ""), 10);
+  return (isNaN(lastNum) ? 0 : lastNum) + 1;
+}
+
+/** カード一括発行 */
+export async function issueCards(count: number): Promise<string[]> {
+  if (count <= 0 || count > 1000) throw new Error("発行枚数は1〜1000枚で指定してください");
+  if (USE_MOCK) {
+    console.log("[Mock] issueCards:", count);
+    return Array.from({ length: count }, (_, i) => `mock-card-${i + 1}`);
+  }
+
+  const startNum = await getNextCardNumber();
+  const ids: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const num = startNum + i;
+    const cardNumber = `HANIPON-${String(num).padStart(5, "0")}`;
+    const ref = await addDoc(collection(db, "cards"), {
+      cardNumber,
+      citizenId: "",
+      balance: 0,
+      isActive: true,
+      createdAt: Timestamp.now(),
+    });
+    ids.push(ref.id);
+  }
+
+  return ids;
+}
+
+/** カード一覧取得 */
+export async function getAllCards(): Promise<{ id: string; data: Card }[]> {
+  if (USE_MOCK) return [];
+  const q = query(collection(db, "cards"), orderBy("cardNumber", "asc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, data: d.data() as Card }));
+}
+
+/** カード番号でカード取得 */
+export async function getCardByNumber(
+  cardNumber: string
+): Promise<{ id: string; data: Card } | null> {
+  if (USE_MOCK) return null;
+  const q = query(
+    collection(db, "cards"),
+    where("cardNumber", "==", cardNumber),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, data: d.data() as Card };
+}
+
+/** 市民に紐付けられたカード取得 */
+export async function getCardsByCitizen(
+  citizenId: string
+): Promise<{ id: string; data: Card }[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "cards"),
+    where("citizenId", "==", citizenId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, data: d.data() as Card }));
+}
+
+/** カードの有効/無効を切替 */
+export async function toggleCardActive(
+  cardId: string,
+  isActive: boolean
+): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "cards", cardId), { isActive });
+}
+
+/** カードを市民に紐付け（カード残高をユーザー残高に統合） */
+export async function linkCardToCitizen(
+  cardNumber: string,
+  citizenId: string
+): Promise<void> {
+  if (USE_MOCK) return;
+
+  const cardResult = await getCardByNumber(cardNumber);
+  if (!cardResult) throw new Error("カードが見つかりません");
+
+  const { id: cardId, data: card } = cardResult;
+  if (!card.isActive) throw new Error("このカードは無効です");
+  if (card.citizenId && card.citizenId !== "") throw new Error("このカードは既に紐付けられています");
+
+  await runTransaction(db, async (tx) => {
+    const cardRef = doc(db, "cards", cardId);
+    const cardSnap = await tx.get(cardRef);
+    if (!cardSnap.exists()) throw new Error("カードが見つかりません");
+    const cardData = cardSnap.data() as Card;
+
+    // カード残高をユーザー残高に統合
+    if (cardData.balance > 0) {
+      const userRef = doc(db, "users", citizenId);
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+      const user = userSnap.data() as User;
+
+      tx.update(userRef, {
+        balance: user.balance + cardData.balance,
+        updatedAt: Timestamp.now(),
+      });
+
+      // 残高移行のトランザクション記録
+      const txRef = doc(collection(db, "transactions"));
+      tx.set(txRef, {
+        fromUserId: "card:" + cardNumber,
+        toMerchantId: "",
+        amount: cardData.balance,
+        type: "card_balance_transfer",
+        memo: `カード${cardNumber}の残高統合`,
+        createdAt: Timestamp.now(),
+      });
+    }
+
+    // カードを紐付け、残高を0にする
+    tx.update(cardRef, {
+      citizenId,
+      balance: 0,
+      linkedAt: Timestamp.now(),
+    });
+  });
+}
+
+/** カードの紐付け解除 */
+export async function unlinkCard(cardId: string): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "cards", cardId), {
+    citizenId: "",
+    linkedAt: null,
+  });
+}
+
+/** 窓口チャージ（カード残高に加算） */
+export async function chargeCard(
+  cardNumber: string,
+  amount: number,
+  adminId: string
+): Promise<void> {
+  if (amount <= 0) throw new Error("チャージ金額は1以上を指定してください");
+  if (USE_MOCK) return;
+
+  const cardResult = await getCardByNumber(cardNumber);
+  if (!cardResult) throw new Error("カードが見つかりません");
+
+  const { id: cardId, data: card } = cardResult;
+  if (!card.isActive) throw new Error("このカードは無効です");
+
+  await runTransaction(db, async (tx) => {
+    const cardRef = doc(db, "cards", cardId);
+    const cardSnap = await tx.get(cardRef);
+    if (!cardSnap.exists()) throw new Error("カードが見つかりません");
+    const cardData = cardSnap.data() as Card;
+
+    // カード残高を加算
+    tx.update(cardRef, {
+      balance: cardData.balance + amount,
+    });
+
+    // 紐付け済みの場合はユーザー残高にも加算
+    if (cardData.citizenId && cardData.citizenId !== "") {
+      const userRef = doc(db, "users", cardData.citizenId);
+      const userSnap = await tx.get(userRef);
+      if (userSnap.exists()) {
+        const user = userSnap.data() as User;
+        tx.update(userRef, {
+          balance: user.balance + amount,
+          updatedAt: Timestamp.now(),
+        });
+      }
+    }
+
+    // トランザクション記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: "admin:" + adminId,
+      toMerchantId: "",
+      amount,
+      type: "card_charge",
+      memo: `窓口チャージ: ${cardNumber}`,
+      createdAt: Timestamp.now(),
+    });
   });
 }

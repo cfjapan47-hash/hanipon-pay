@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, QrCode, Store, MessageCircle, Clock } from "lucide-react";
+import { Home, QrCode, Store, MessageCircle, CreditCard } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -12,8 +12,8 @@ const navItems = [
   { href: "/", label: "ホーム", icon: Home },
   { href: "/pay", label: "支払う", icon: QrCode },
   { href: "/shops", label: "お店", icon: Store },
+  { href: "/mycard", label: "カード", icon: CreditCard },
   { href: "/messages", label: "メッセージ", icon: MessageCircle },
-  { href: "/history", label: "履歴", icon: Clock },
 ];
 
 export default function Navigation() {

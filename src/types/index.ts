@@ -74,7 +74,7 @@ export interface ChargeRequest {
   approvedBy?: string;
 }
 
-export type TransactionType = "payment" | "grant" | "refund" | "referral_reward" | "cash_charge";
+export type TransactionType = "payment" | "grant" | "refund" | "referral_reward" | "cash_charge" | "card_charge" | "card_balance_transfer";
 
 export interface Transaction {
   id?: string;
@@ -179,6 +179,20 @@ export interface CustomerNote {
   userId: string;
   text: string;
   createdAt: Timestamp;
+}
+
+// ========== Shop Customer ==========
+
+// ========== Card (紙カード) ==========
+
+export interface Card {
+  id?: string;
+  cardNumber: string;    // HANIPON-00001 形式
+  citizenId: string;     // 紐付けた市民のuserId（未紐付けは""）
+  balance: number;       // カード残高
+  isActive: boolean;     // 有効/無効
+  createdAt: Timestamp;
+  linkedAt?: Timestamp;  // 紐付け日時
 }
 
 // ========== Shop Customer ==========

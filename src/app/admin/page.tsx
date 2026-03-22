@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { getSystemStats } from "@/lib/firestore";
 import { formatPoints } from "@/lib/utils";
-import { Loader2, Users, Store, ArrowRightLeft, Gift, List, Banknote, CreditCard } from "lucide-react";
+import { Loader2, Users, Store, ArrowRightLeft, Gift, List, Banknote, CreditCard, Zap } from "lucide-react";
 import Link from "next/link";
 
 function AdminContent() {
@@ -139,6 +139,36 @@ function AdminContent() {
             <p className="font-medium text-gray-800">換金申請管理</p>
             <p className="text-xs text-gray-400">
               加盟店からの換金申請を処理
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/cards"
+          className="flex items-center gap-3 bg-white rounded-xl px-4 py-4 shadow-sm hover:bg-indigo-50 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <CreditCard size={18} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-800">カード管理</p>
+            <p className="text-xs text-gray-400">
+              紙カードの発行・管理・無効化
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/card-charge"
+          className="flex items-center gap-3 bg-white rounded-xl px-4 py-4 shadow-sm hover:bg-amber-50 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+            <Zap size={18} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-800">窓口チャージ</p>
+            <p className="text-xs text-gray-400">
+              紙カードへの窓口チャージ
             </p>
           </div>
         </Link>
