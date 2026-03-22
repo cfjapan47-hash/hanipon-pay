@@ -404,7 +404,7 @@ export async function registerMerchantSelf(data: {
     qrCodeId,
     isActive: true,
     status: "pending",
-    referrerId: data.referrerId || undefined,
+    referrerId: data.referrerId || null,
     referrerRewarded: false,
   });
 
