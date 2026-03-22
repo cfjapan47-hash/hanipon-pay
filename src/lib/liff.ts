@@ -10,12 +10,14 @@ export interface LiffUser {
 }
 
 let initialized = false;
+let useMock = false;
 
 export async function initLiff(): Promise<void> {
   if (initialized) return;
 
   if (IS_DEV && !LIFF_ID) {
-    console.log("[LIFF] Development mode: using mock user");
+    console.log("[LIFF] Development mode: using mock user (no LIFF_ID)");
+    useMock = true;
     initialized = true;
     return;
   }
@@ -23,17 +25,30 @@ export async function initLiff(): Promise<void> {
   try {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) {
+      if (IS_DEV) {
+        // ローカル開発ではLINEログインできないのでモックに切替
+        console.log("[LIFF] Development mode: not logged in, using mock user");
+        useMock = true;
+        initialized = true;
+        return;
+      }
       liff.login();
     }
     initialized = true;
   } catch (error) {
+    if (IS_DEV) {
+      console.warn("[LIFF] Init failed in dev, using mock user:", error);
+      useMock = true;
+      initialized = true;
+      return;
+    }
     console.error("[LIFF] Initialization failed:", error);
     throw error;
   }
 }
 
 export async function getLiffUser(): Promise<LiffUser> {
-  if (IS_DEV && !LIFF_ID) {
+  if (useMock) {
     return {
       userId: "dev-user-001",
       displayName: "テストユーザー",
