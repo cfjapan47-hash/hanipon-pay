@@ -56,7 +56,7 @@ function HomeContent() {
         </div>
       )}
 
-      <BalanceCard balance={user.balance} displayName={user.displayName} />
+      <BalanceCard balance={user.balance} displayName={user.displayName} localBalance={user.localBalance} />
 
       {/* マイQRコードボタン */}
       <button

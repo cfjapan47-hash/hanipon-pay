@@ -6,7 +6,9 @@ export interface User {
   displayName: string;
   pictureUrl?: string;
   balance: number;
+  localBalance?: Record<string, number>; // エリア別限定ポイント { "honjo": 1000, "kumagaya": 500 }
   role: UserRole;
+  areaId?: string; // ユーザーの所属エリア
   referralCount?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -26,9 +28,21 @@ export interface Merchant {
   salesBalance?: number;
   bankAccount?: string;
   bankName?: string;
+  areaId?: string; // 加盟店の所属エリア（例: "honjo"）
+  areaName?: string; // エリア表示名（例: "本庄市"）
   referrerId?: string | null;
   referrerRewarded?: boolean;
   createdAt: Timestamp;
+}
+
+// ========== Area (エリア) ==========
+
+export interface Area {
+  id?: string;       // "honjo", "kumagaya" など
+  name: string;      // "本庄市", "熊谷市"
+  payName: string;   // "はにぽんありがとうPay", "くまがやありがとうPay"
+  color?: string;    // ブランドカラー
+  isActive: boolean;
 }
 
 export type WithdrawalStatus = "pending" | "completed" | "rejected";
@@ -54,6 +68,8 @@ export interface Transaction {
   amount: number;
   type: TransactionType;
   memo: string;
+  pointType?: "common" | "local"; // 共通ポイント or 地域限定ポイント
+  areaId?: string; // 地域限定の場合のエリアID
   createdAt: Timestamp;
 }
 
@@ -63,6 +79,8 @@ export interface PointGrant {
   amount: number;
   reason: string;
   grantedBy: string;
+  pointType?: "common" | "local"; // 共通 or 地域限定
+  areaId?: string; // 地域限定の場合のエリアID
   createdAt: Timestamp;
 }
 

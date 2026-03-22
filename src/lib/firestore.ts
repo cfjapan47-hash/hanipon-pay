@@ -16,7 +16,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -390,11 +390,16 @@ export async function registerMerchantSelf(data: {
   category: string;
   phone: string;
   referrerId?: string;
+  areaId?: string;
 }): Promise<string> {
   if (USE_MOCK) {
     console.log("[Mock] registerMerchantSelf:", data);
     return "mock-self-merchant";
   }
+
+  const AREA_NAMES: Record<string, string> = {
+    honjo: "本庄市", kumagaya: "熊谷市", fukaya: "深谷市", kodama: "児玉郡",
+  };
 
   const qrCodeId = `hp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const merchantId = await createMerchant({
@@ -406,6 +411,8 @@ export async function registerMerchantSelf(data: {
     qrCodeId,
     isActive: true,
     status: "pending",
+    areaId: data.areaId || "honjo",
+    areaName: AREA_NAMES[data.areaId || "honjo"] || data.areaId || "本庄市",
     referrerId: data.referrerId || null,
     referrerRewarded: false,
   });
@@ -1001,6 +1008,145 @@ export async function processCashCharge(
     });
 
     return txRef.id;
+  });
+}
+
+// ========== Area (エリア管理) ==========
+
+export async function getAreas(): Promise<Area[]> {
+  if (USE_MOCK) return [];
+  const snap = await getDocs(collection(db, "areas"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Area));
+}
+
+export async function getArea(areaId: string): Promise<Area | null> {
+  if (USE_MOCK) return null;
+  const snap = await getDoc(doc(db, "areas", areaId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Area;
+}
+
+export async function createArea(areaId: string, data: Omit<Area, "id">): Promise<void> {
+  if (USE_MOCK) return;
+  await setDoc(doc(db, "areas", areaId), data);
+}
+
+/**
+ * 地域限定ポイントを付与
+ * localBalance.{areaId} に加算する
+ */
+export async function grantLocalPoints(
+  toUserId: string,
+  amount: number,
+  areaId: string,
+  reason: string,
+  grantedBy: string
+): Promise<string> {
+  if (USE_MOCK) return "mock-local-grant-id";
+
+  const userRef = doc(db, "users", toUserId);
+
+  return await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists()) throw new Error("ユーザーが見つかりません");
+
+    const userData = userDoc.data();
+    const localBalance = userData.localBalance || {};
+    localBalance[areaId] = (localBalance[areaId] || 0) + amount;
+
+    transaction.update(userRef, {
+      localBalance,
+      updatedAt: serverTimestamp(),
+    });
+
+    const txRef = doc(collection(db, "transactions"));
+    transaction.set(txRef, {
+      fromUserId: "system",
+      toMerchantId: toUserId,
+      amount,
+      type: "grant",
+      memo: `${reason}（${areaId}限定）`,
+      pointType: "local",
+      areaId,
+      createdAt: serverTimestamp(),
+    });
+
+    return txRef.id;
+  });
+}
+
+/**
+ * 決済時にポイントを消費（地域限定→共通の優先順位）
+ * 加盟店のエリアと一致する地域限定ポイントを先に使う
+ */
+export async function processPaymentWithArea(
+  fromUserId: string,
+  toMerchantId: string,
+  amount: number,
+  merchantAreaId: string | undefined,
+  memo: string = ""
+): Promise<{ txId: string; usedLocal: number; usedCommon: number }> {
+  if (USE_MOCK) return { txId: "mock", usedLocal: 0, usedCommon: amount };
+
+  const userRef = doc(db, "users", fromUserId);
+  const merchantRef = doc(db, "merchants", toMerchantId);
+
+  return await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    const merchantDoc = await transaction.get(merchantRef);
+
+    if (!userDoc.exists()) throw new Error("ユーザーが見つかりません");
+    if (!merchantDoc.exists()) throw new Error("加盟店が見つかりません");
+
+    const userData = userDoc.data();
+    const commonBalance = userData.balance || 0;
+    const localBalance = userData.localBalance || {};
+
+    let usedLocal = 0;
+    let usedCommon = 0;
+    let remaining = amount;
+
+    // ① 加盟店のエリアに一致する地域限定ポイントを先に使う
+    if (merchantAreaId && localBalance[merchantAreaId] > 0) {
+      usedLocal = Math.min(localBalance[merchantAreaId], remaining);
+      localBalance[merchantAreaId] -= usedLocal;
+      remaining -= usedLocal;
+    }
+
+    // ② 残りは共通ポイントで支払い
+    usedCommon = remaining;
+    if (commonBalance < usedCommon) {
+      throw new Error("ポイント残高が不足しています");
+    }
+
+    // ユーザーの残高を更新
+    transaction.update(userRef, {
+      balance: commonBalance - usedCommon,
+      localBalance,
+      updatedAt: serverTimestamp(),
+    });
+
+    // 加盟店の売上残高を更新
+    transaction.update(merchantRef, {
+      salesBalance: increment(amount),
+    });
+
+    // 取引履歴
+    const txRef = doc(collection(db, "transactions"));
+    transaction.set(txRef, {
+      fromUserId,
+      toMerchantId,
+      amount,
+      type: "payment",
+      memo: memo || (usedLocal > 0
+        ? `地域限定${usedLocal}pt + 共通${usedCommon}pt`
+        : `共通${usedCommon}pt`),
+      pointType: usedLocal > 0 ? "local" : "common",
+      areaId: merchantAreaId || null,
+      createdAt: serverTimestamp(),
+    });
+
+    return { txId: txRef.id, usedLocal, usedCommon };
   });
 }
 

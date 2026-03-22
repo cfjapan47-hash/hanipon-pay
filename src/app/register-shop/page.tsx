@@ -20,6 +20,7 @@ function RegisterContent() {
     address: "",
     category: "",
     phone: "",
+    areaId: "honjo",
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -56,6 +57,7 @@ function RegisterContent() {
           category: formData.category.trim(),
           phone: formData.phone.trim(),
           referrerId: referrerId || "",
+          areaId: formData.areaId,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("登録がタイムアウトしました。Firestoreへの接続に問題がある可能性があります。")), 15000)
@@ -173,6 +175,22 @@ function RegisterContent() {
             <option value="医療">医療</option>
             <option value="直売所">直売所・農家</option>
             <option value="その他">その他</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-gray-700">エリア</label>
+          <select
+            value={formData.areaId || "honjo"}
+            onChange={(e) =>
+              setFormData({ ...formData, areaId: e.target.value })
+            }
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          >
+            <option value="honjo">本庄市</option>
+            <option value="kumagaya">熊谷市</option>
+            <option value="fukaya">深谷市</option>
+            <option value="kodama">児玉郡</option>
+            <option value="other">その他</option>
           </select>
         </div>
 

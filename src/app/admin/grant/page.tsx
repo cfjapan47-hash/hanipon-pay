@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { grantPoints } from "@/lib/firestore";
+import { grantPoints, grantLocalPoints } from "@/lib/firestore";
 import {
   Loader2,
   CheckCircle2,
@@ -16,6 +16,8 @@ function GrantContent() {
   const [toUserId, setToUserId] = useState("");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  const [pointType, setPointType] = useState<"common" | "local">("common");
+  const [areaId, setAreaId] = useState("honjo");
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -55,7 +57,11 @@ function GrantContent() {
     setProcessing(true);
     setErrorMsg("");
     try {
-      await grantPoints(toUserId.trim(), numAmount, reason.trim(), liffUser.userId);
+      if (pointType === "local") {
+        await grantLocalPoints(toUserId.trim(), numAmount, areaId, reason.trim(), liffUser.userId);
+      } else {
+        await grantPoints(toUserId.trim(), numAmount, reason.trim(), liffUser.userId);
+      }
       setSuccess(true);
     } catch (err) {
       setErrorMsg(
@@ -73,7 +79,9 @@ function GrantContent() {
           <CheckCircle2 className="mx-auto text-green-500 mb-4" size={56} />
           <p className="text-xl font-bold text-gray-800">ポイント発行完了</p>
           <p className="text-gray-500 mt-2">
-            {toUserId} に {amount} pt を付与しました
+            {toUserId} に {amount} pt
+            {pointType === "local" ? `（${areaId}限定）` : "（共通）"}
+            を付与しました
           </p>
           <button
             onClick={() => {
@@ -133,6 +141,49 @@ function GrantContent() {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
         </div>
+        <div>
+          <label className="text-sm text-gray-600">ポイント種類</label>
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => setPointType("common")}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold ${
+                pointType === "common"
+                  ? "bg-orange-500 text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              共通ポイント
+            </button>
+            <button
+              onClick={() => setPointType("local")}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold ${
+                pointType === "local"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              地域限定
+            </button>
+          </div>
+        </div>
+        {pointType === "local" && (
+          <div>
+            <label className="text-sm text-gray-600">対象エリア</label>
+            <select
+              value={areaId}
+              onChange={(e) => setAreaId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="honjo">本庄市</option>
+              <option value="kumagaya">熊谷市</option>
+              <option value="fukaya">深谷市</option>
+              <option value="kodama">児玉郡</option>
+            </select>
+            <p className="text-xs text-blue-500 mt-1">
+              このエリアの加盟店でのみ使えるポイントです
+            </p>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="flex items-center gap-2 text-red-500 text-sm">
