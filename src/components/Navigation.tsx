@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, QrCode, Clock, Gift } from "lucide-react";
+import { Home, QrCode, Clock, Gift, Ticket } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "ホーム", icon: Home },
   { href: "/pay", label: "支払う", icon: QrCode },
+  { href: "/coupons", label: "クーポン", icon: Ticket },
   { href: "/referral", label: "紹介", icon: Gift },
   { href: "/history", label: "履歴", icon: Clock },
 ];
@@ -24,13 +25,13 @@ export default function Navigation() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 px-4 py-2 text-xs transition-colors ${
+              className={`flex flex-col items-center gap-1 px-2 py-2 text-xs transition-colors ${
                 isActive
                   ? "text-orange-600 font-bold"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              <Icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 1.5} />
               <span>{item.label}</span>
             </Link>
           );

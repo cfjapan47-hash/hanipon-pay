@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket } from "lucide-react";
 import Link from "next/link";
 
 function MerchantContent() {
@@ -94,20 +94,27 @@ function MerchantContent() {
         </div>
       </div>
 
-      <div className="flex gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         <Link
           href={`/merchant/qr?id=${merchant.data.qrCodeId}`}
-          className="flex-1 flex items-center justify-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
         >
-          <QrCode size={18} />
-          QRコード
+          <QrCode size={20} />
+          <span className="text-xs">QRコード</span>
+        </Link>
+        <Link
+          href="/merchant/coupons"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-orange-600 font-medium hover:bg-orange-50 transition-colors"
+        >
+          <Ticket size={20} />
+          <span className="text-xs">クーポン</span>
         </Link>
         <Link
           href="/merchant/withdraw"
-          className="flex-1 flex items-center justify-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm text-green-600 font-medium hover:bg-green-50 transition-colors"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-green-600 font-medium hover:bg-green-50 transition-colors"
         >
-          <Banknote size={18} />
-          換金申請
+          <Banknote size={20} />
+          <span className="text-xs">換金申請</span>
         </Link>
       </div>
 

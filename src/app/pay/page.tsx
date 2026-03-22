@@ -3,15 +3,21 @@
 import { useState, useCallback } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Navigation from "@/components/Navigation";
-import { getMerchantByQrCode, processPayment } from "@/lib/firestore";
+import {
+  getMerchantByQrCode,
+  processPayment,
+  getActiveCouponsByMerchant,
+  useCoupon,
+} from "@/lib/firestore";
 import { formatPoints } from "@/lib/utils";
-import type { Merchant } from "@/types";
+import type { Merchant, Coupon } from "@/types";
 import {
   Loader2,
   Camera,
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
+  Ticket,
 } from "lucide-react";
 
 type PayStep = "scan" | "amount" | "confirm" | "done" | "error";
@@ -27,6 +33,9 @@ function PayContent() {
   const [errorMsg, setErrorMsg] = useState("");
   const [processing, setProcessing] = useState(false);
   const [qrInput, setQrInput] = useState("");
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+  const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const [discount, setDiscount] = useState(0);
 
   const handleQrResult = useCallback(async (qrCodeId: string) => {
     try {
@@ -37,6 +46,13 @@ function PayContent() {
         return;
       }
       setMerchant(result);
+      // 加盟店のアクティブなクーポンを取得
+      try {
+        const coupons = await getActiveCouponsByMerchant(result.id);
+        setAvailableCoupons(coupons);
+      } catch {
+        setAvailableCoupons([]);
+      }
       setStep("amount");
     } catch {
       setErrorMsg("QRコードの読み取りに失敗しました");
@@ -50,6 +66,25 @@ function PayContent() {
     }
   };
 
+  const calcDiscount = (coupon: Coupon, payAmount: number): number => {
+    if (coupon.minAmount && payAmount < coupon.minAmount) return 0;
+    if (coupon.type === "percent") return Math.floor(payAmount * (coupon.value / 100));
+    if (coupon.type === "fixed") return Math.min(coupon.value, payAmount);
+    if (coupon.type === "cashback") return Math.floor(payAmount * (coupon.value / 100));
+    return 0;
+  };
+
+  const handleSelectCoupon = (coupon: Coupon) => {
+    if (selectedCoupon?.id === coupon.id) {
+      setSelectedCoupon(null);
+      setDiscount(0);
+    } else {
+      const numAmount = parseInt(amount, 10) || 0;
+      setSelectedCoupon(coupon);
+      setDiscount(calcDiscount(coupon, numAmount));
+    }
+  };
+
   const handlePay = async () => {
     if (!liffUser || !merchant || !amount) return;
     const numAmount = parseInt(amount, 10);
@@ -58,9 +93,20 @@ function PayContent() {
       return;
     }
 
+    const actualAmount = Math.max(numAmount - discount, 0);
+
     setProcessing(true);
     try {
-      await processPayment(liffUser.userId, merchant.id, numAmount);
+      // クーポンが選択されている場合、先にクーポンを使用
+      if (selectedCoupon?.id) {
+        await useCoupon(selectedCoupon.id, liffUser.userId, numAmount);
+      }
+      await processPayment(
+        liffUser.userId,
+        merchant.id,
+        actualAmount,
+        selectedCoupon ? `クーポン適用: ${selectedCoupon.title} (-${discount}pt)` : ""
+      );
       setStep("done");
     } catch (err) {
       setErrorMsg(
@@ -78,6 +124,9 @@ function PayContent() {
     setAmount("");
     setErrorMsg("");
     setQrInput("");
+    setAvailableCoupons([]);
+    setSelectedCoupon(null);
+    setDiscount(0);
   };
 
   if (loading) {
@@ -157,6 +206,77 @@ function PayContent() {
               )}
             </div>
 
+            {/* クーポン選択 */}
+            {availableCoupons.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-600 flex items-center gap-1 mb-2">
+                  <Ticket size={14} className="text-orange-500" />
+                  使えるクーポン
+                </p>
+                <div className="space-y-2">
+                  {availableCoupons.map((coupon) => {
+                    const isSelected = selectedCoupon?.id === coupon.id;
+                    const numAmt = parseInt(amount, 10) || 0;
+                    const couponDiscount = calcDiscount(coupon, numAmt);
+                    const meetsMin = !coupon.minAmount || numAmt >= coupon.minAmount;
+                    return (
+                      <button
+                        key={coupon.id}
+                        onClick={() => meetsMin && handleSelectCoupon(coupon)}
+                        disabled={!meetsMin}
+                        className={`w-full text-left px-3 py-2.5 rounded-xl border-2 transition-colors ${
+                          isSelected
+                            ? "border-orange-500 bg-orange-50"
+                            : meetsMin
+                            ? "border-gray-200 hover:border-orange-300"
+                            : "border-gray-100 opacity-50 cursor-not-allowed"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium text-gray-800">
+                              {coupon.title}
+                            </span>
+                            {coupon.minAmount && !meetsMin && (
+                              <p className="text-xs text-gray-400">
+                                {formatPoints(coupon.minAmount)}pt以上で利用可
+                              </p>
+                            )}
+                          </div>
+                          <span className={`text-sm font-bold ${isSelected ? "text-orange-500" : "text-gray-600"}`}>
+                            {coupon.type === "percent" && `${coupon.value}%OFF`}
+                            {coupon.type === "fixed" && `${formatPoints(coupon.value)}pt引き`}
+                            {coupon.type === "cashback" && `${coupon.value}%還元`}
+                            {meetsMin && numAmt > 0 && ` (-${couponDiscount}pt)`}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 割引後の金額表示 */}
+            {selectedCoupon && discount > 0 && parseInt(amount, 10) > 0 && (
+              <div className="mt-3 bg-orange-50 rounded-xl p-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">元の金額</span>
+                  <span>{formatPoints(parseInt(amount, 10))} pt</span>
+                </div>
+                <div className="flex justify-between text-sm text-orange-600">
+                  <span>クーポン割引</span>
+                  <span>-{formatPoints(discount)} pt</span>
+                </div>
+                <div className="flex justify-between font-bold mt-1 pt-1 border-t border-orange-200">
+                  <span>お支払い額</span>
+                  <span className="text-orange-600">
+                    {formatPoints(Math.max(parseInt(amount, 10) - discount, 0))} pt
+                  </span>
+                </div>
+              </div>
+            )}
+
             {errorMsg && (
               <p className="text-red-500 text-sm mt-2">{errorMsg}</p>
             )}
@@ -168,7 +288,8 @@ function PayContent() {
                   setErrorMsg("正しい金額を入力してください");
                   return;
                 }
-                if (user && num > user.balance) {
+                const actualPay = Math.max(num - discount, 0);
+                if (user && actualPay > user.balance) {
                   setErrorMsg("残高が不足しています");
                   return;
                 }
@@ -190,10 +311,27 @@ function PayContent() {
             <p className="text-lg font-bold text-gray-800">
               {merchant.data.name}
             </p>
-            <p className="text-4xl font-bold text-orange-600 mt-4">
-              {formatPoints(parseInt(amount, 10))}
-              <span className="text-lg ml-1">pt</span>
-            </p>
+
+            {selectedCoupon && discount > 0 ? (
+              <div className="mt-4">
+                <p className="text-lg text-gray-400 line-through">
+                  {formatPoints(parseInt(amount, 10))} pt
+                </p>
+                <div className="flex items-center justify-center gap-2 mt-1">
+                  <Ticket size={16} className="text-orange-500" />
+                  <span className="text-sm text-orange-500">{selectedCoupon.title}</span>
+                </div>
+                <p className="text-4xl font-bold text-orange-600 mt-2">
+                  {formatPoints(Math.max(parseInt(amount, 10) - discount, 0))}
+                  <span className="text-lg ml-1">pt</span>
+                </p>
+              </div>
+            ) : (
+              <p className="text-4xl font-bold text-orange-600 mt-4">
+                {formatPoints(parseInt(amount, 10))}
+                <span className="text-lg ml-1">pt</span>
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button

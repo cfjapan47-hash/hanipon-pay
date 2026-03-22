@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -543,6 +543,183 @@ export async function processWithdrawal(
     status,
     processedAt: Timestamp.now(),
   });
+}
+
+// ========== Coupons ==========
+
+export async function createCoupon(data: {
+  merchantId: string;
+  merchantName: string;
+  title: string;
+  description?: string;
+  type: Coupon["type"];
+  value: number;
+  minAmount?: number;
+  maxUses: number;
+  startAt: Date;
+  endAt: Date;
+}): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createCoupon:", data);
+    return "mock-coupon-new";
+  }
+  const ref = await addDoc(collection(db, "coupons"), {
+    merchantId: data.merchantId,
+    merchantName: data.merchantName,
+    title: data.title,
+    description: data.description || "",
+    type: data.type,
+    value: data.value,
+    minAmount: data.minAmount || 0,
+    maxUses: data.maxUses,
+    usedCount: 0,
+    startAt: Timestamp.fromDate(data.startAt),
+    endAt: Timestamp.fromDate(data.endAt),
+    status: "active",
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getMerchantCoupons(
+  merchantId: string
+): Promise<Coupon[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "coupons"),
+    where("merchantId", "==", merchantId),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Coupon);
+}
+
+export async function getActiveCoupons(): Promise<Coupon[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "coupons"),
+    where("status", "==", "active"),
+    orderBy("endAt", "asc")
+  );
+  const snap = await getDocs(q);
+  const now = new Date();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Coupon)
+    .filter((c) => {
+      const end = c.endAt?.toDate();
+      const start = c.startAt?.toDate();
+      return end && end > now && start && start <= now && c.usedCount < c.maxUses;
+    });
+}
+
+export async function getActiveCouponsByMerchant(
+  merchantId: string
+): Promise<Coupon[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "coupons"),
+    where("merchantId", "==", merchantId),
+    where("status", "==", "active"),
+    orderBy("endAt", "asc")
+  );
+  const snap = await getDocs(q);
+  const now = new Date();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Coupon)
+    .filter((c) => {
+      const end = c.endAt?.toDate();
+      const start = c.startAt?.toDate();
+      return end && end > now && start && start <= now && c.usedCount < c.maxUses;
+    });
+}
+
+export async function useCoupon(
+  couponId: string,
+  userId: string,
+  paymentAmount: number
+): Promise<{ discount: number }> {
+  if (USE_MOCK) return { discount: 100 };
+
+  const result = await runTransaction(db, async (tx) => {
+    const couponRef = doc(db, "coupons", couponId);
+    const couponSnap = await tx.get(couponRef);
+    if (!couponSnap.exists()) throw new Error("クーポンが見つかりません");
+
+    const coupon = couponSnap.data() as Coupon;
+    const now = new Date();
+    const end = coupon.endAt?.toDate();
+    const start = coupon.startAt?.toDate();
+
+    if (coupon.status !== "active") throw new Error("このクーポンは無効です");
+    if (end && end < now) throw new Error("このクーポンは期限切れです");
+    if (start && start > now) throw new Error("このクーポンはまだ有効期間前です");
+    if (coupon.usedCount >= coupon.maxUses) throw new Error("クーポンの利用上限に達しました");
+    if (coupon.minAmount && paymentAmount < coupon.minAmount) {
+      throw new Error(`${coupon.minAmount}pt以上のお支払いで利用できます`);
+    }
+
+    // 同一ユーザーの重複利用チェック
+    const existingUse = query(
+      collection(db, "couponUses"),
+      where("couponId", "==", couponId),
+      where("userId", "==", userId),
+      limit(1)
+    );
+    const existingSnap = await getDocs(existingUse);
+    if (!existingSnap.empty) throw new Error("このクーポンは既に利用済みです");
+
+    // 割引額の計算
+    let discount = 0;
+    if (coupon.type === "percent") {
+      discount = Math.floor(paymentAmount * (coupon.value / 100));
+    } else if (coupon.type === "fixed") {
+      discount = Math.min(coupon.value, paymentAmount);
+    } else if (coupon.type === "cashback") {
+      discount = Math.floor(paymentAmount * (coupon.value / 100));
+    }
+
+    // クーポン使用数を更新
+    tx.update(couponRef, {
+      usedCount: coupon.usedCount + 1,
+    });
+
+    // クーポン使用記録を作成
+    const useRef = doc(collection(db, "couponUses"));
+    tx.set(useRef, {
+      couponId,
+      userId,
+      merchantId: coupon.merchantId,
+      discount,
+      createdAt: Timestamp.now(),
+    });
+
+    return { discount };
+  });
+
+  return result;
+}
+
+export async function updateCouponStatus(
+  couponId: string,
+  status: Coupon["status"]
+): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "coupons", couponId), { status });
+}
+
+export async function getUserCouponUses(
+  userId: string
+): Promise<CouponUse[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "couponUses"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CouponUse);
 }
 
 // ========== Stats ==========

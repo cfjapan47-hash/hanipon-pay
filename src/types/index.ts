@@ -75,3 +75,34 @@ export interface Referral {
   rewarded: boolean;
   createdAt: Timestamp;
 }
+
+// ========== Coupon ==========
+
+export type CouponType = "percent" | "fixed" | "cashback";
+export type CouponStatus = "active" | "expired" | "disabled";
+
+export interface Coupon {
+  id?: string;
+  merchantId: string;
+  merchantName: string;
+  title: string;
+  description?: string;
+  type: CouponType;
+  value: number; // percent: 割引率(1-100), fixed: 値引き額, cashback: 還元率(1-100)
+  minAmount?: number; // 最低利用額
+  maxUses: number; // 発行枚数上限
+  usedCount: number; // 使用済み枚数
+  startAt: Timestamp;
+  endAt: Timestamp;
+  status: CouponStatus;
+  createdAt: Timestamp;
+}
+
+export interface CouponUse {
+  id?: string;
+  couponId: string;
+  userId: string;
+  merchantId: string;
+  discount: number; // 実際の割引額
+  createdAt: Timestamp;
+}
