@@ -144,6 +144,31 @@ function ReceiveContent() {
     return 0;
   };
 
+  // 最もお得なクーポンを自動選択
+  const autoBestCoupon = useCallback((numAmount: number) => {
+    if (availableCoupons.length === 0 || numAmount <= 0) {
+      setSelectedCoupon(null);
+      setDiscount(0);
+      return;
+    }
+    let bestCoupon: Coupon | null = null;
+    let bestDiscount = 0;
+    for (const c of availableCoupons) {
+      const d = calcDiscount(c, numAmount);
+      if (d > bestDiscount) {
+        bestDiscount = d;
+        bestCoupon = c;
+      }
+    }
+    setSelectedCoupon(bestCoupon);
+    setDiscount(bestDiscount);
+  }, [availableCoupons]);
+
+  const handleRemoveCoupon = () => {
+    setSelectedCoupon(null);
+    setDiscount(0);
+  };
+
   const handleSelectCoupon = (coupon: Coupon) => {
     if (selectedCoupon?.id === coupon.id) {
       setSelectedCoupon(null);
@@ -292,9 +317,7 @@ function ReceiveContent() {
                   placeholder="金額を入力" value={amount}
                   onChange={(e) => {
                     setAmount(e.target.value);
-                    if (selectedCoupon) {
-                      setDiscount(calcDiscount(selectedCoupon, parseInt(e.target.value, 10) || 0));
-                    }
+                    autoBestCoupon(parseInt(e.target.value, 10) || 0);
                   }} />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">pt</span>
               </div>
@@ -304,7 +327,7 @@ function ReceiveContent() {
               {QUICK_AMOUNTS.map((a) => (
                 <button key={a} onClick={() => {
                   setAmount(String(a));
-                  if (selectedCoupon) setDiscount(calcDiscount(selectedCoupon, a));
+                  autoBestCoupon(a);
                 }}
                   className={`rounded-lg py-2 text-sm font-bold border ${
                     amount === String(a) ? "bg-green-500 text-white border-green-500" : "bg-gray-50 text-gray-700 border-gray-200"
@@ -314,59 +337,67 @@ function ReceiveContent() {
               ))}
             </div>
 
-            {/* クーポン選択 */}
-            {availableCoupons.length > 0 && parseInt(amount, 10) > 0 && (
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 flex items-center gap-1 mb-2">
-                  <Ticket size={14} className="text-orange-500" /> クーポン適用
-                </p>
-                <div className="space-y-2">
+            {/* クーポン自動適用バナー */}
+            {selectedCoupon && discount > 0 && (
+              <div className="bg-green-50 border-2 border-green-400 rounded-xl p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Ticket size={18} className="text-green-600" />
+                    <span className="font-bold text-green-700">クーポン適用中 ✅</span>
+                  </div>
+                  <button onClick={handleRemoveCoupon}
+                    className="text-xs text-gray-400 border border-gray-300 rounded px-2 py-1">
+                    解除
+                  </button>
+                </div>
+                <p className="text-sm font-bold text-green-700">{selectedCoupon.title}</p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">お会計</span>
+                    <span>{parseInt(amount, 10).toLocaleString()} pt</span>
+                  </div>
+                  <div className="flex justify-between text-green-600 font-bold">
+                    <span>割引</span>
+                    <span>-{discount.toLocaleString()} pt</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg border-t border-green-300 pt-1">
+                    <span>お支払い額</span>
+                    <span className="text-green-700">{actualAmount.toLocaleString()} pt</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* クーポンなし or 金額未入力 */}
+            {!selectedCoupon && availableCoupons.length > 0 && parseInt(amount, 10) > 0 && (
+              <div className="bg-gray-50 rounded-xl p-3 mb-4 text-center">
+                <p className="text-sm text-gray-400">適用可能なクーポンはありません</p>
+              </div>
+            )}
+
+            {/* 他のクーポンに変更 */}
+            {availableCoupons.length > 1 && parseInt(amount, 10) > 0 && (
+              <details className="mb-4">
+                <summary className="text-xs text-gray-400 cursor-pointer">他のクーポンに変更</summary>
+                <div className="space-y-2 mt-2">
                   {availableCoupons.map((coupon) => {
                     const isSelected = selectedCoupon?.id === coupon.id;
                     const numAmt = parseInt(amount, 10) || 0;
                     const couponDiscount = calcDiscount(coupon, numAmt);
                     const meetsMin = !coupon.minAmount || numAmt >= coupon.minAmount;
+                    if (isSelected || !meetsMin) return null;
                     return (
-                      <button key={coupon.id}
-                        onClick={() => meetsMin && handleSelectCoupon(coupon)}
-                        disabled={!meetsMin}
-                        className={`w-full text-left px-3 py-2 rounded-xl border-2 ${
-                          isSelected ? "border-green-500 bg-green-50"
-                            : meetsMin ? "border-gray-200 hover:border-green-300"
-                            : "border-gray-100 opacity-50"
-                        }`}>
+                      <button key={coupon.id} onClick={() => handleSelectCoupon(coupon)}
+                        className="w-full text-left px-3 py-2 rounded-xl border border-gray-200 hover:border-green-300">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{coupon.title}</span>
-                          <span className={`text-sm font-bold ${isSelected ? "text-green-600" : "text-gray-600"}`}>
-                            {coupon.type === "percent" && `${coupon.value}%OFF`}
-                            {coupon.type === "fixed" && `${coupon.value}pt引き`}
-                            {coupon.type === "cashback" && `${coupon.value}%還元`}
-                            {meetsMin && numAmt > 0 && ` (-${couponDiscount}pt)`}
-                          </span>
+                          <span className="text-sm">{coupon.title}</span>
+                          <span className="text-sm text-gray-600">-{couponDiscount.toLocaleString()}pt</span>
                         </div>
                       </button>
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {/* 割引後金額 */}
-            {selectedCoupon && discount > 0 && (
-              <div className="bg-green-50 rounded-lg p-3 mb-4 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">お会計</span>
-                  <span>{parseInt(amount, 10).toLocaleString()} pt</span>
-                </div>
-                <div className="flex justify-between text-green-600">
-                  <span>クーポン割引</span>
-                  <span>-{discount.toLocaleString()} pt</span>
-                </div>
-                <div className="flex justify-between font-bold border-t pt-1">
-                  <span>お支払い額</span>
-                  <span className="text-green-600">{actualAmount.toLocaleString()} pt</span>
-                </div>
-              </div>
+              </details>
             )}
 
             {actualAmount > citizenBalance && (
