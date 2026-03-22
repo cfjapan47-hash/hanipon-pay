@@ -50,9 +50,12 @@ function MerchantContent() {
         <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
           <Store className="mx-auto text-gray-400 mb-4" size={48} />
           <p className="text-gray-600">加盟店として登録されていません</p>
-          <p className="text-sm text-gray-400 mt-2">
-            管理者にお問い合わせください
-          </p>
+          <Link
+            href="/register-shop"
+            className="inline-block mt-4 bg-orange-500 text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition-colors"
+          >
+            無料で加盟店登録する
+          </Link>
         </div>
       </div>
     );
