@@ -945,6 +945,54 @@ export async function getMerchantCustomers(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer);
 }
 
+// ========== Favorite / お気に入り ==========
+
+/**
+ * 市民が加盟店をお気に入り登録（＝顧客リストにも自動追加）
+ */
+export async function favoriteShop(
+  userId: string,
+  displayName: string,
+  pictureUrl: string | undefined,
+  merchantId: string
+): Promise<void> {
+  if (USE_MOCK) return;
+  await getOrCreateShopCustomer({
+    merchantId,
+    userId,
+    displayName,
+    pictureUrl,
+  });
+}
+
+/**
+ * 市民がお気に入り登録している加盟店一覧を取得
+ */
+export async function getUserFavoriteShops(
+  userId: string
+): Promise<ShopCustomer[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "shopCustomers"),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer);
+}
+
+/**
+ * アクティブな加盟店一覧を取得
+ */
+export async function getActiveShops(): Promise<{ id: string; data: Merchant }[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "merchants"),
+    where("isActive", "==", true)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, data: d.data() as Merchant }));
+}
+
 // ========== Cash Charge (加盟店現金チャージ) ==========
 
 /**
