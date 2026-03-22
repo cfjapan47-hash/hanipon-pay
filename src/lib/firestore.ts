@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -291,6 +291,38 @@ export async function processPayment(
 
     return txRef.id;
   });
+
+  // 顧客データを更新（トランザクション外で非同期処理）
+  try {
+    const userSnap = await getDoc(doc(db, "users", fromUserId));
+    const userData = userSnap.exists() ? (userSnap.data() as User) : null;
+    const customerId = `${toMerchantId}_${fromUserId}`;
+    const customerRef = doc(db, "shopCustomers", customerId);
+    const customerSnap = await getDoc(customerRef);
+
+    if (customerSnap.exists()) {
+      const existing = customerSnap.data() as ShopCustomer;
+      await updateDoc(customerRef, {
+        lastVisit: Timestamp.now(),
+        visitCount: (existing.visitCount || 0) + 1,
+        totalSpent: (existing.totalSpent || 0) + amount,
+        displayName: userData?.displayName || existing.displayName,
+      });
+    } else {
+      await setDoc(customerRef, {
+        merchantId: toMerchantId,
+        userId: fromUserId,
+        displayName: userData?.displayName || "ユーザー",
+        pictureUrl: userData?.pictureUrl || null,
+        firstVisit: Timestamp.now(),
+        lastVisit: Timestamp.now(),
+        visitCount: 1,
+        totalSpent: amount,
+      });
+    }
+  } catch (e) {
+    console.warn("[shopCustomer] update failed (non-critical):", e);
+  }
 
   return txId;
 }
@@ -720,6 +752,188 @@ export async function getUserCouponUses(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CouponUse);
+}
+
+// ========== Messages ==========
+
+function getThreadId(merchantId: string, userId: string): string {
+  return `${merchantId}_${userId}`;
+}
+
+export async function sendMessage(data: {
+  merchantId: string;
+  merchantName: string;
+  userId: string;
+  userName: string;
+  senderType: "merchant" | "citizen";
+  senderId: string;
+  text: string;
+}): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] sendMessage:", data);
+    return "mock-msg-new";
+  }
+
+  const threadId = getThreadId(data.merchantId, data.userId);
+
+  // メッセージを保存
+  const msgRef = await addDoc(collection(db, "messages"), {
+    threadId,
+    merchantId: data.merchantId,
+    merchantName: data.merchantName,
+    userId: data.userId,
+    userName: data.userName,
+    senderType: data.senderType,
+    senderId: data.senderId,
+    text: data.text,
+    read: false,
+    createdAt: Timestamp.now(),
+  });
+
+  // スレッドを更新 or 作成
+  const threadRef = doc(db, "messageThreads", threadId);
+  const threadSnap = await getDoc(threadRef);
+
+  if (threadSnap.exists()) {
+    const thread = threadSnap.data() as MessageThread;
+    await updateDoc(threadRef, {
+      lastMessage: data.text,
+      lastMessageAt: Timestamp.now(),
+      ...(data.senderType === "merchant"
+        ? { unreadByCitizen: (thread.unreadByCitizen || 0) + 1 }
+        : { unreadByMerchant: (thread.unreadByMerchant || 0) + 1 }),
+    });
+  } else {
+    await setDoc(threadRef, {
+      merchantId: data.merchantId,
+      merchantName: data.merchantName,
+      userId: data.userId,
+      userName: data.userName,
+      lastMessage: data.text,
+      lastMessageAt: Timestamp.now(),
+      unreadByMerchant: data.senderType === "citizen" ? 1 : 0,
+      unreadByCitizen: data.senderType === "merchant" ? 1 : 0,
+    });
+  }
+
+  return msgRef.id;
+}
+
+export async function getThreadMessages(
+  merchantId: string,
+  userId: string,
+  maxCount = 50
+): Promise<Message[]> {
+  if (USE_MOCK) return [];
+  const threadId = getThreadId(merchantId, userId);
+  const q = query(
+    collection(db, "messages"),
+    where("threadId", "==", threadId),
+    orderBy("createdAt", "asc"),
+    limit(maxCount)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Message);
+}
+
+export async function getMerchantThreads(
+  merchantId: string
+): Promise<MessageThread[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "messageThreads"),
+    where("merchantId", "==", merchantId),
+    orderBy("lastMessageAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MessageThread);
+}
+
+export async function getCitizenThreads(
+  userId: string
+): Promise<MessageThread[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "messageThreads"),
+    where("userId", "==", userId),
+    orderBy("lastMessageAt", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MessageThread);
+}
+
+export async function markThreadRead(
+  merchantId: string,
+  userId: string,
+  readerType: "merchant" | "citizen"
+): Promise<void> {
+  if (USE_MOCK) return;
+  const threadId = getThreadId(merchantId, userId);
+  const threadRef = doc(db, "messageThreads", threadId);
+  await updateDoc(threadRef, {
+    ...(readerType === "merchant"
+      ? { unreadByMerchant: 0 }
+      : { unreadByCitizen: 0 }),
+  });
+}
+
+// ========== Shop Customers ==========
+
+export async function getOrCreateShopCustomer(data: {
+  merchantId: string;
+  userId: string;
+  displayName: string;
+  pictureUrl?: string;
+}): Promise<ShopCustomer> {
+  if (USE_MOCK) {
+    return {
+      merchantId: data.merchantId,
+      userId: data.userId,
+      displayName: data.displayName,
+      pictureUrl: data.pictureUrl,
+      firstVisit: Timestamp.now(),
+      lastVisit: Timestamp.now(),
+      visitCount: 1,
+      totalSpent: 0,
+    };
+  }
+
+  const customerId = `${data.merchantId}_${data.userId}`;
+  const ref = doc(db, "shopCustomers", customerId);
+  const snap = await getDoc(ref);
+
+  if (snap.exists()) {
+    return { id: snap.id, ...snap.data() } as ShopCustomer;
+  }
+
+  const newCustomer = {
+    merchantId: data.merchantId,
+    userId: data.userId,
+    displayName: data.displayName,
+    pictureUrl: data.pictureUrl || null,
+    firstVisit: Timestamp.now(),
+    lastVisit: Timestamp.now(),
+    visitCount: 0,
+    totalSpent: 0,
+  };
+  await setDoc(ref, newCustomer);
+  return { id: customerId, ...newCustomer } as ShopCustomer;
+}
+
+export async function getMerchantCustomers(
+  merchantId: string
+): Promise<ShopCustomer[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "shopCustomers"),
+    where("merchantId", "==", merchantId),
+    orderBy("lastVisit", "desc"),
+    limit(100)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShopCustomer);
 }
 
 // ========== Stats ==========

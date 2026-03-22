@@ -106,3 +106,48 @@ export interface CouponUse {
   discount: number; // 実際の割引額
   createdAt: Timestamp;
 }
+
+// ========== Message ==========
+
+export interface Message {
+  id?: string;
+  threadId: string; // merchantId_userId の組み合わせ
+  merchantId: string;
+  merchantName: string;
+  userId: string;
+  userName: string;
+  senderType: "merchant" | "citizen";
+  senderId: string;
+  text: string;
+  read: boolean;
+  createdAt: Timestamp;
+}
+
+export interface MessageThread {
+  id?: string; // merchantId_userId
+  merchantId: string;
+  merchantName: string;
+  userId: string;
+  userName: string;
+  userPictureUrl?: string;
+  lastMessage: string;
+  lastMessageAt: Timestamp;
+  unreadByMerchant: number;
+  unreadByCitizen: number;
+  visitCount?: number;
+  totalSpent?: number;
+}
+
+// ========== Shop Customer ==========
+
+export interface ShopCustomer {
+  id?: string;
+  merchantId: string;
+  userId: string;
+  displayName: string;
+  pictureUrl?: string;
+  firstVisit: Timestamp;
+  lastVisit: Timestamp;
+  visitCount: number;
+  totalSpent: number;
+}

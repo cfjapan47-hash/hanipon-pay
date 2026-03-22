@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users } from "lucide-react";
 import Link from "next/link";
 
 function MerchantContent() {
@@ -94,7 +94,7 @@ function MerchantContent() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <Link
           href={`/merchant/qr?id=${merchant.data.qrCodeId}`}
           className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
@@ -115,6 +115,22 @@ function MerchantContent() {
         >
           <Banknote size={20} />
           <span className="text-xs">換金申請</span>
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Link
+          href="/merchant/messages"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-purple-600 font-medium hover:bg-purple-50 transition-colors"
+        >
+          <MessageCircle size={20} />
+          <span className="text-xs">メッセージ</span>
+        </Link>
+        <Link
+          href="/merchant/customers"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-teal-600 font-medium hover:bg-teal-50 transition-colors"
+        >
+          <Users size={20} />
+          <span className="text-xs">顧客リスト</span>
         </Link>
       </div>
 
