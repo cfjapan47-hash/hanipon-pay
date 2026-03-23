@@ -7,7 +7,7 @@ import BalanceCard from "@/components/BalanceCard";
 import TransactionList from "@/components/TransactionList";
 import { getUserTransactions, getBirthdayCouponSettings } from "@/lib/firestore";
 import type { Transaction, BirthdayCouponSettings } from "@/types";
-import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote, Truck, Package, UserCog } from "lucide-react";
+import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote, Truck, Package, UserCog, Wrench, ShoppingBag, Heart } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
@@ -179,6 +179,27 @@ function HomeContent() {
         >
           <Truck size={18} />
           ドライバーになる
+        </Link>
+        <Link
+          href="/skills"
+          className="flex items-center gap-2 bg-indigo-50 text-indigo-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-indigo-100 transition-colors"
+        >
+          <Wrench size={18} />
+          スキルシェア
+        </Link>
+        <Link
+          href="/flea-market"
+          className="flex items-center gap-2 bg-rose-50 text-rose-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-rose-100 transition-colors"
+        >
+          <ShoppingBag size={18} />
+          フリマ
+        </Link>
+        <Link
+          href="/kosodate"
+          className="flex items-center gap-2 bg-pink-50 text-pink-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-pink-100 transition-colors"
+        >
+          <Heart size={18} />
+          子育てシェア
         </Link>
         <Link
           href="/profile"

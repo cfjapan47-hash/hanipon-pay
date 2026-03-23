@@ -404,3 +404,80 @@ export interface BirthdayCouponSettings {
   validDays: number;
   updatedAt: Timestamp;
 }
+
+// ========== Skill Share (スキルシェア) ==========
+
+export type SkillCategory = "IT" | "料理" | "DIY" | "語学" | "その他";
+
+export interface Skill {
+  id?: string;
+  userId: string;
+  userName: string;
+  title: string;
+  category: SkillCategory;
+  description: string;
+  price: number;
+  area: string;
+  isActive: boolean;
+  createdAt: Timestamp;
+}
+
+export type SkillRequestStatus = "pending" | "accepted" | "completed" | "cancelled";
+
+export interface SkillRequest {
+  id?: string;
+  skillId: string;
+  requesterId: string;
+  requesterName: string;
+  providerId: string;
+  providerName: string;
+  status: SkillRequestStatus;
+  message: string;
+  amount: number;
+  createdAt: Timestamp;
+}
+
+// ========== Flea Market (フリマ) ==========
+
+export type FleaItemCategory = "家電" | "衣類" | "本" | "家具" | "その他";
+export type FleaItemCondition = "新品同様" | "美品" | "良好" | "使用感あり";
+export type FleaItemMethod = "pickup" | "delivery" | "both";
+export type FleaItemStatus = "available" | "sold" | "cancelled";
+
+export interface FleaItem {
+  id?: string;
+  sellerId: string;
+  sellerName: string;
+  title: string;
+  description: string;
+  price: number;
+  category: FleaItemCategory;
+  condition: FleaItemCondition;
+  method: FleaItemMethod;
+  area: string;
+  status: FleaItemStatus;
+  buyerId: string;
+  createdAt: Timestamp;
+}
+
+// ========== Kosodate Share (子育てシェア) ==========
+
+export type KosodateType = "保育" | "送迎" | "家事" | "その他";
+export type KosodateStatus = "open" | "accepted" | "completed" | "cancelled";
+
+export interface KosodateRequest {
+  id?: string;
+  requesterId: string;
+  requesterName: string;
+  type: KosodateType;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
+  duration: number;
+  reward: number;
+  helperId: string;
+  helperName: string;
+  status: KosodateStatus;
+  createdAt: Timestamp;
+}

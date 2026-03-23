@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord, Invoice, InvoiceStatus, BirthdayCouponSettings } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord, Invoice, InvoiceStatus, BirthdayCouponSettings, Skill, SkillRequest, SkillRequestStatus, FleaItem, FleaItemStatus, KosodateRequest, KosodateStatus } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -3120,5 +3120,422 @@ export async function saveBirthdayCouponSettings(
   await setDoc(doc(db, "settings", "birthdayCoupon"), {
     ...data,
     updatedAt: Timestamp.now(),
+  });
+}
+
+// ========== Skill Share (スキルシェア) ==========
+
+export async function createSkill(data: Omit<Skill, "id" | "createdAt">): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createSkill:", data);
+    return "mock-skill-new";
+  }
+  const ref = await addDoc(collection(db, "skills"), {
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getActiveSkills(): Promise<Skill[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "skills"),
+    where("isActive", "==", true),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Skill);
+}
+
+export async function getUserSkills(userId: string): Promise<Skill[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "skills"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Skill);
+}
+
+export async function updateSkillStatus(skillId: string, isActive: boolean): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "skills", skillId), { isActive });
+}
+
+export async function createSkillRequest(data: {
+  skillId: string;
+  requesterId: string;
+  requesterName: string;
+  providerId: string;
+  providerName: string;
+  message: string;
+  amount: number;
+}): Promise<string> {
+  if (data.amount <= 0) throw new Error("金額は1以上を指定してください");
+
+  if (USE_MOCK) {
+    console.log("[Mock] createSkillRequest:", data);
+    return "mock-skill-request-new";
+  }
+
+  const requestId = await runTransaction(db, async (tx) => {
+    const userRef = doc(db, "users", data.requesterId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+
+    const user = userSnap.data() as User;
+    if (user.balance < data.amount) throw new Error("ポイント残高が不足しています");
+
+    // 仮引き落とし
+    tx.update(userRef, {
+      balance: user.balance - data.amount,
+      updatedAt: Timestamp.now(),
+    });
+
+    const reqRef = doc(collection(db, "skillRequests"));
+    tx.set(reqRef, {
+      skillId: data.skillId,
+      requesterId: data.requesterId,
+      requesterName: data.requesterName,
+      providerId: data.providerId,
+      providerName: data.providerName,
+      status: "pending",
+      message: data.message,
+      amount: data.amount,
+      createdAt: Timestamp.now(),
+    });
+
+    return reqRef.id;
+  });
+
+  return requestId;
+}
+
+export async function getSkillRequestsForProvider(providerId: string): Promise<SkillRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "skillRequests"),
+    where("providerId", "==", providerId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SkillRequest);
+}
+
+export async function getSkillRequestsForRequester(requesterId: string): Promise<SkillRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "skillRequests"),
+    where("requesterId", "==", requesterId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SkillRequest);
+}
+
+export async function updateSkillRequestStatus(
+  requestId: string,
+  status: SkillRequestStatus
+): Promise<void> {
+  if (USE_MOCK) return;
+
+  if (status === "completed") {
+    // 完了時: プロバイダーにポイント移転（手数料10%）
+    await runTransaction(db, async (tx) => {
+      const reqRef = doc(db, "skillRequests", requestId);
+      const reqSnap = await tx.get(reqRef);
+      if (!reqSnap.exists()) throw new Error("依頼が見つかりません");
+
+      const req = reqSnap.data() as SkillRequest;
+      if (req.status !== "accepted") throw new Error("受付済みの依頼のみ完了できます");
+
+      const fee = Math.floor(req.amount * 0.1);
+      const payout = req.amount - fee;
+
+      const providerRef = doc(db, "users", req.providerId);
+      const providerSnap = await tx.get(providerRef);
+      if (!providerSnap.exists()) throw new Error("提供者が見つかりません");
+
+      const provider = providerSnap.data() as User;
+
+      tx.update(providerRef, {
+        balance: provider.balance + payout,
+        updatedAt: Timestamp.now(),
+      });
+
+      tx.update(reqRef, { status: "completed" });
+    });
+  } else if (status === "cancelled") {
+    // キャンセル時: 依頼者にポイント返金
+    await runTransaction(db, async (tx) => {
+      const reqRef = doc(db, "skillRequests", requestId);
+      const reqSnap = await tx.get(reqRef);
+      if (!reqSnap.exists()) throw new Error("依頼が見つかりません");
+
+      const req = reqSnap.data() as SkillRequest;
+
+      const requesterRef = doc(db, "users", req.requesterId);
+      const requesterSnap = await tx.get(requesterRef);
+      if (!requesterSnap.exists()) throw new Error("依頼者が見つかりません");
+
+      const requester = requesterSnap.data() as User;
+
+      tx.update(requesterRef, {
+        balance: requester.balance + req.amount,
+        updatedAt: Timestamp.now(),
+      });
+
+      tx.update(reqRef, { status: "cancelled" });
+    });
+  } else {
+    await updateDoc(doc(db, "skillRequests", requestId), { status });
+  }
+}
+
+// ========== Flea Market (フリマ) ==========
+
+export async function createFleaItem(data: Omit<FleaItem, "id" | "createdAt" | "buyerId" | "status">): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createFleaItem:", data);
+    return "mock-flea-item-new";
+  }
+  const ref = await addDoc(collection(db, "fleaItems"), {
+    ...data,
+    buyerId: "",
+    status: "available",
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getAvailableFleaItems(): Promise<FleaItem[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "fleaItems"),
+    where("status", "==", "available"),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FleaItem);
+}
+
+export async function getFleaItem(itemId: string): Promise<FleaItem | null> {
+  if (USE_MOCK) return null;
+  const snap = await getDoc(doc(db, "fleaItems", itemId));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as FleaItem) : null;
+}
+
+export async function getUserFleaItems(userId: string): Promise<FleaItem[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "fleaItems"),
+    where("sellerId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FleaItem);
+}
+
+export async function getUserPurchasedFleaItems(userId: string): Promise<FleaItem[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "fleaItems"),
+    where("buyerId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FleaItem);
+}
+
+export async function purchaseFleaItem(itemId: string, buyerId: string, buyerName: string): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] purchaseFleaItem:", itemId, buyerId);
+    return;
+  }
+
+  await runTransaction(db, async (tx) => {
+    const itemRef = doc(db, "fleaItems", itemId);
+    const itemSnap = await tx.get(itemRef);
+    if (!itemSnap.exists()) throw new Error("商品が見つかりません");
+
+    const item = itemSnap.data() as FleaItem;
+    if (item.status !== "available") throw new Error("この商品は既に売れています");
+    if (item.sellerId === buyerId) throw new Error("自分の商品は購入できません");
+
+    const buyerRef = doc(db, "users", buyerId);
+    const buyerSnap = await tx.get(buyerRef);
+    if (!buyerSnap.exists()) throw new Error("購入者が見つかりません");
+
+    const buyer = buyerSnap.data() as User;
+    if (buyer.balance < item.price) throw new Error("ポイント残高が不足しています");
+
+    const fee = Math.floor(item.price * 0.1);
+    const payout = item.price - fee;
+
+    const sellerRef = doc(db, "users", item.sellerId);
+    const sellerSnap = await tx.get(sellerRef);
+    if (!sellerSnap.exists()) throw new Error("出品者が見つかりません");
+
+    const seller = sellerSnap.data() as User;
+
+    // 購入者のポイントを引き落とし
+    tx.update(buyerRef, {
+      balance: buyer.balance - item.price,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 出品者にポイント入金（手数料10%控除）
+    tx.update(sellerRef, {
+      balance: seller.balance + payout,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 商品ステータス更新
+    tx.update(itemRef, {
+      status: "sold",
+      buyerId: buyerId,
+    });
+  });
+}
+
+export async function cancelFleaItem(itemId: string): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "fleaItems", itemId), { status: "cancelled" as FleaItemStatus });
+}
+
+// ========== Kosodate Share (子育てシェア) ==========
+
+export async function createKosodateRequest(data: Omit<KosodateRequest, "id" | "createdAt" | "helperId" | "helperName" | "status">): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createKosodateRequest:", data);
+    return "mock-kosodate-new";
+  }
+
+  const requestId = await runTransaction(db, async (tx) => {
+    const userRef = doc(db, "users", data.requesterId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+
+    const user = userSnap.data() as User;
+    if (user.balance < data.reward) throw new Error("ポイント残高が不足しています");
+
+    // 報酬を仮引き落とし
+    tx.update(userRef, {
+      balance: user.balance - data.reward,
+      updatedAt: Timestamp.now(),
+    });
+
+    const reqRef = doc(collection(db, "kosodateRequests"));
+    tx.set(reqRef, {
+      ...data,
+      helperId: "",
+      helperName: "",
+      status: "open",
+      createdAt: Timestamp.now(),
+    });
+
+    return reqRef.id;
+  });
+
+  return requestId;
+}
+
+export async function getOpenKosodateRequests(): Promise<KosodateRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "kosodateRequests"),
+    where("status", "==", "open"),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as KosodateRequest);
+}
+
+export async function getUserKosodateRequests(userId: string): Promise<KosodateRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "kosodateRequests"),
+    where("requesterId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as KosodateRequest);
+}
+
+export async function getUserKosodateHelps(userId: string): Promise<KosodateRequest[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "kosodateRequests"),
+    where("helperId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as KosodateRequest);
+}
+
+export async function acceptKosodateRequest(requestId: string, helperId: string, helperName: string): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "kosodateRequests", requestId), {
+    helperId,
+    helperName,
+    status: "accepted" as KosodateStatus,
+  });
+}
+
+export async function completeKosodateRequest(requestId: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  await runTransaction(db, async (tx) => {
+    const reqRef = doc(db, "kosodateRequests", requestId);
+    const reqSnap = await tx.get(reqRef);
+    if (!reqSnap.exists()) throw new Error("依頼が見つかりません");
+
+    const req = reqSnap.data() as KosodateRequest;
+    if (req.status !== "accepted") throw new Error("受付済みの依頼のみ完了できます");
+    if (!req.helperId) throw new Error("お手伝いさんが未割当です");
+
+    const fee = Math.floor(req.reward * 0.05); // 手数料5%
+    const payout = req.reward - fee;
+
+    const helperRef = doc(db, "users", req.helperId);
+    const helperSnap = await tx.get(helperRef);
+    if (!helperSnap.exists()) throw new Error("お手伝いさんが見つかりません");
+
+    const helper = helperSnap.data() as User;
+
+    tx.update(helperRef, {
+      balance: helper.balance + payout,
+      updatedAt: Timestamp.now(),
+    });
+
+    tx.update(reqRef, { status: "completed" });
+  });
+}
+
+export async function cancelKosodateRequest(requestId: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  await runTransaction(db, async (tx) => {
+    const reqRef = doc(db, "kosodateRequests", requestId);
+    const reqSnap = await tx.get(reqRef);
+    if (!reqSnap.exists()) throw new Error("依頼が見つかりません");
+
+    const req = reqSnap.data() as KosodateRequest;
+
+    // 報酬を依頼者に返金
+    const requesterRef = doc(db, "users", req.requesterId);
+    const requesterSnap = await tx.get(requesterRef);
+    if (!requesterSnap.exists()) throw new Error("依頼者が見つかりません");
+
+    const requester = requesterSnap.data() as User;
+
+    tx.update(requesterRef, {
+      balance: requester.balance + req.reward,
+      updatedAt: Timestamp.now(),
+    });
+
+    tx.update(reqRef, { status: "cancelled" });
   });
 }
