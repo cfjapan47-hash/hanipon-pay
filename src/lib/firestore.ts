@@ -17,7 +17,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -331,6 +331,13 @@ export async function processPayment(
     }
   } catch (e) {
     console.warn("[shopCustomer] update failed (non-critical):", e);
+  }
+
+  // スタンプを自動付与
+  try {
+    await addStamp(toMerchantId, fromUserId);
+  } catch (e) {
+    console.warn("[stamp] auto-stamp failed (non-critical):", e);
   }
 
   return txId;
@@ -1937,4 +1944,185 @@ export async function chargeCard(
       createdAt: Timestamp.now(),
     });
   });
+}
+
+// ========== Stamp Card (スタンプカード) ==========
+
+export async function createStampCard(data: {
+  merchantId: string;
+  merchantName: string;
+  requiredStamps: number;
+  rewardType: "point" | "coupon";
+  rewardValue: number;
+  rewardDescription: string;
+}): Promise<string> {
+  if (USE_MOCK) return "mock-stamp-card-1";
+  const ref = await addDoc(collection(db, "stampCards"), {
+    ...data,
+    isActive: true,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getStampCardByMerchant(
+  merchantId: string
+): Promise<StampCard | null> {
+  if (USE_MOCK) return null;
+  const q = query(
+    collection(db, "stampCards"),
+    where("merchantId", "==", merchantId),
+    where("isActive", "==", true),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() } as StampCard;
+}
+
+export async function getAllStampCardsByMerchant(
+  merchantId: string
+): Promise<StampCard[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "stampCards"),
+    where("merchantId", "==", merchantId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as StampCard);
+}
+
+export async function updateStampCardStatus(
+  stampCardId: string,
+  isActive: boolean
+): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "stampCards", stampCardId), { isActive });
+}
+
+export async function getUserStamp(
+  merchantId: string,
+  userId: string
+): Promise<UserStamp | null> {
+  if (USE_MOCK) return null;
+  const id = `${merchantId}_${userId}`;
+  const snap = await getDoc(doc(db, "userStamps", id));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as UserStamp;
+}
+
+export async function getUserStampsByUser(
+  userId: string
+): Promise<UserStamp[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "userStamps"),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as UserStamp);
+}
+
+/**
+ * 決済時にスタンプを1つ付与する
+ */
+export async function addStamp(
+  merchantId: string,
+  userId: string
+): Promise<{ stamped: boolean; completed: boolean }> {
+  if (USE_MOCK) return { stamped: false, completed: false };
+
+  // アクティブなスタンプカードがあるか確認
+  const stampCard = await getStampCardByMerchant(merchantId);
+  if (!stampCard || !stampCard.id) return { stamped: false, completed: false };
+
+  const userStampId = `${merchantId}_${userId}`;
+  const userStampRef = doc(db, "userStamps", userStampId);
+  const userStampSnap = await getDoc(userStampRef);
+
+  if (userStampSnap.exists()) {
+    const data = userStampSnap.data() as UserStamp;
+    const newCount = data.currentStamps + 1;
+    const completed = newCount >= stampCard.requiredStamps;
+
+    await updateDoc(userStampRef, {
+      currentStamps: completed ? 0 : newCount,
+      completedCount: completed ? (data.completedCount || 0) + 1 : data.completedCount || 0,
+      lastStampAt: Timestamp.now(),
+    });
+
+    // 達成時に自動でポイント付与
+    if (completed && stampCard.rewardType === "point") {
+      try {
+        await grantPoints(
+          userId,
+          stampCard.rewardValue,
+          `スタンプカード達成報酬（${stampCard.rewardDescription}）`,
+          "system:stamp"
+        );
+      } catch (e) {
+        console.warn("[stamp] reward grant failed:", e);
+      }
+    }
+
+    return { stamped: true, completed };
+  } else {
+    // 初回スタンプ
+    await setDoc(userStampRef, {
+      userId,
+      merchantId,
+      stampCardId: stampCard.id,
+      currentStamps: 1,
+      completedCount: 0,
+      lastStampAt: Timestamp.now(),
+      createdAt: Timestamp.now(),
+    });
+    return { stamped: true, completed: false };
+  }
+}
+
+/**
+ * スタンプ達成時の報酬受け取り（手動用 - couponタイプ等）
+ */
+export async function claimStampReward(
+  merchantId: string,
+  userId: string
+): Promise<boolean> {
+  if (USE_MOCK) return false;
+
+  const stampCard = await getStampCardByMerchant(merchantId);
+  if (!stampCard || !stampCard.id) return false;
+
+  const userStampId = `${merchantId}_${userId}`;
+  const userStampRef = doc(db, "userStamps", userStampId);
+  const userStampSnap = await getDoc(userStampRef);
+
+  if (!userStampSnap.exists()) return false;
+  const data = userStampSnap.data() as UserStamp;
+
+  if (data.currentStamps < stampCard.requiredStamps) return false;
+
+  // スタンプリセット + 達成カウント更新
+  await updateDoc(userStampRef, {
+    currentStamps: 0,
+    completedCount: (data.completedCount || 0) + 1,
+    lastStampAt: Timestamp.now(),
+  });
+
+  // ポイント報酬の場合は自動付与
+  if (stampCard.rewardType === "point") {
+    try {
+      await grantPoints(
+        userId,
+        stampCard.rewardValue,
+        `スタンプカード達成報酬（${stampCard.rewardDescription}）`,
+        "system:stamp"
+      );
+    } catch (e) {
+      console.warn("[stamp] reward grant failed:", e);
+    }
+  }
+
+  return true;
 }

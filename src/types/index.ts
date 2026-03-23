@@ -201,6 +201,33 @@ export interface Card {
   linkedAt?: Timestamp;  // 紐付け日時
 }
 
+// ========== Stamp Card ==========
+
+export type StampRewardType = "point" | "coupon";
+
+export interface StampCard {
+  id?: string;
+  merchantId: string;
+  merchantName: string;
+  requiredStamps: number;
+  rewardType: StampRewardType;
+  rewardValue: number;
+  rewardDescription: string;
+  isActive: boolean;
+  createdAt: Timestamp;
+}
+
+export interface UserStamp {
+  id?: string; // `${merchantId}_${userId}`
+  userId: string;
+  merchantId: string;
+  stampCardId: string;
+  currentStamps: number;
+  completedCount: number;
+  lastStampAt: Timestamp;
+  createdAt: Timestamp;
+}
+
 // ========== Shop Customer ==========
 
 export interface ShopCustomer {

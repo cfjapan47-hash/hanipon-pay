@@ -8,8 +8,10 @@ import {
   getUserFavoriteShops,
   favoriteShop,
   sendMessage,
+  getStampCardByMerchant,
+  getUserStamp,
 } from "@/lib/firestore";
-import type { Merchant, Coupon } from "@/types";
+import type { Merchant, Coupon, StampCard, UserStamp } from "@/types";
 import {
   Loader2,
   MapPin,
@@ -23,6 +25,8 @@ import {
   Send,
   X,
   ExternalLink,
+  Star,
+  Stamp,
 } from "lucide-react";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
@@ -31,6 +35,8 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
   const { liffUser, user, loading } = useAuth();
   const [shop, setShop] = useState<{ id: string; data: Merchant } | null>(null);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [stampCard, setStampCard] = useState<StampCard | null>(null);
+  const [userStamp, setUserStamp] = useState<UserStamp | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [favoriting, setFavoriting] = useState(false);
@@ -48,10 +54,14 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
       getMerchantWithId(merchantId),
       getActiveCouponsByMerchant(merchantId),
       getUserFavoriteShops(liffUser.userId),
+      getStampCardByMerchant(merchantId),
+      getUserStamp(merchantId, liffUser.userId),
     ])
-      .then(([shopData, couponList, favList]) => {
+      .then(([shopData, couponList, favList, sc, us]) => {
         setShop(shopData);
         setCoupons(couponList);
+        setStampCard(sc);
+        setUserStamp(us);
         const favSet = new Set(favList.map((f) => f.merchantId));
         setIsFavorite(favSet.has(merchantId));
       })
@@ -336,6 +346,47 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* スタンプカード */}
+      {stampCard && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Stamp size={16} className="text-orange-500" />
+            <p className="text-sm font-semibold text-gray-700">スタンプカード</p>
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            {stampCard.requiredStamps}スタンプで{stampCard.rewardDescription}
+          </p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {Array.from({ length: stampCard.requiredStamps }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  i < (userStamp?.currentStamps || 0)
+                    ? "bg-orange-500 text-white"
+                    : "bg-gray-100 text-gray-300"
+                }`}
+              >
+                <Star
+                  size={14}
+                  fill={i < (userStamp?.currentStamps || 0) ? "currentColor" : "none"}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400">
+              {userStamp?.currentStamps || 0}/{stampCard.requiredStamps} スタンプ
+            </p>
+            <Link
+              href="/stamps"
+              className="text-xs text-orange-500 hover:underline font-medium"
+            >
+              すべて見る
+            </Link>
           </div>
         </div>
       )}
