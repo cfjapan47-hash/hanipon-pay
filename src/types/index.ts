@@ -228,6 +228,38 @@ export interface UserStamp {
   createdAt: Timestamp;
 }
 
+// ========== Reservation ==========
+
+export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "completed";
+
+export interface ReservationSettings {
+  isEnabled: boolean;
+  slotDuration: number; // 分: 30, 60, 90, 120
+  maxReservationsPerSlot: number;
+  businessHours: { open: string; close: string };
+  closedDays: string[]; // ["月", "火"] etc
+  cancellationFee: number; // キャンセル料（ポイント）
+  prepaymentRequired: boolean;
+  prepaymentAmount: number;
+  updatedAt: Timestamp;
+}
+
+export interface Reservation {
+  id?: string;
+  merchantId: string;
+  merchantName: string;
+  userId: string;
+  userName: string;
+  date: string; // "2026-03-25"
+  time: string; // "14:00"
+  status: ReservationStatus;
+  prepaid: boolean;
+  prepaidAmount: number;
+  cancellationFee: number;
+  memo: string;
+  createdAt: Timestamp;
+}
+
 // ========== Shop Customer ==========
 
 export interface ShopCustomer {

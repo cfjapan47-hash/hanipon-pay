@@ -10,8 +10,9 @@ import {
   sendMessage,
   getStampCardByMerchant,
   getUserStamp,
+  getReservationSettings,
 } from "@/lib/firestore";
-import type { Merchant, Coupon, StampCard, UserStamp } from "@/types";
+import type { Merchant, Coupon, StampCard, UserStamp, ReservationSettings } from "@/types";
 import {
   Loader2,
   MapPin,
@@ -27,6 +28,7 @@ import {
   ExternalLink,
   Star,
   Stamp,
+  CalendarCheck,
 } from "lucide-react";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
@@ -37,6 +39,7 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [stampCard, setStampCard] = useState<StampCard | null>(null);
   const [userStamp, setUserStamp] = useState<UserStamp | null>(null);
+  const [reservationEnabled, setReservationEnabled] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [favoriting, setFavoriting] = useState(false);
@@ -56,12 +59,14 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
       getUserFavoriteShops(liffUser.userId),
       getStampCardByMerchant(merchantId),
       getUserStamp(merchantId, liffUser.userId),
+      getReservationSettings(merchantId),
     ])
-      .then(([shopData, couponList, favList, sc, us]) => {
+      .then(([shopData, couponList, favList, sc, us, resSetting]) => {
         setShop(shopData);
         setCoupons(couponList);
         setStampCard(sc);
         setUserStamp(us);
+        setReservationEnabled(resSetting?.isEnabled || false);
         const favSet = new Set(favList.map((f) => f.merchantId));
         setIsFavorite(favSet.has(merchantId));
       })
@@ -278,6 +283,17 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
           メッセージ
         </button>
       </div>
+
+      {/* 予約ボタン */}
+      {reservationEnabled && (
+        <Link
+          href={`/shop/${merchantId}/reserve`}
+          className="flex items-center justify-center gap-2 bg-green-500 text-white rounded-xl px-4 py-3.5 shadow-sm font-bold text-sm hover:bg-green-600 transition-colors mb-3"
+        >
+          <CalendarCheck size={18} />
+          予約する
+        </Link>
+      )}
 
       {/* お知らせ */}
       {announcements.length > 0 && (

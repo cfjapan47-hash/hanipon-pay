@@ -17,7 +17,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2125,4 +2125,218 @@ export async function claimStampReward(
   }
 
   return true;
+}
+
+// ========== Reservation Settings ==========
+
+export async function getReservationSettings(
+  merchantId: string
+): Promise<ReservationSettings | null> {
+  if (USE_MOCK) return null;
+  const snap = await getDoc(doc(db, "reservationSettings", merchantId));
+  return snap.exists() ? (snap.data() as ReservationSettings) : null;
+}
+
+export async function saveReservationSettings(
+  merchantId: string,
+  data: Omit<ReservationSettings, "updatedAt">
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] saveReservationSettings:", merchantId, data);
+    return;
+  }
+  await setDoc(doc(db, "reservationSettings", merchantId), {
+    ...data,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+// ========== Reservations ==========
+
+export async function createReservation(
+  data: Omit<Reservation, "id" | "createdAt">
+): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createReservation:", data);
+    return "mock-reservation-id";
+  }
+  const ref = await addDoc(collection(db, "reservations"), {
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getReservationsByMerchant(
+  merchantId: string
+): Promise<Reservation[]> {
+  if (USE_MOCK) return [];
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const q = query(
+    collection(db, "reservations"),
+    where("merchantId", "==", merchantId),
+    where("date", ">=", todayStr),
+    orderBy("date", "asc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Reservation);
+}
+
+export async function getReservationsByUser(
+  userId: string
+): Promise<Reservation[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "reservations"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Reservation);
+}
+
+export async function getReservationsByMerchantAndDate(
+  merchantId: string,
+  date: string
+): Promise<Reservation[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "reservations"),
+    where("merchantId", "==", merchantId),
+    where("date", "==", date),
+    where("status", "in", ["pending", "confirmed"])
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Reservation);
+}
+
+export async function updateReservationStatus(
+  reservationId: string,
+  status: Reservation["status"]
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] updateReservationStatus:", reservationId, status);
+    return;
+  }
+  await updateDoc(doc(db, "reservations", reservationId), { status });
+}
+
+export async function processReservationPrepayment(
+  userId: string,
+  merchantId: string,
+  amount: number,
+  reservationData: Omit<Reservation, "id" | "createdAt">
+): Promise<string> {
+  if (amount <= 0) throw new Error("金額は1以上を指定してください");
+
+  if (USE_MOCK) {
+    console.log("[Mock] processReservationPrepayment:", { userId, merchantId, amount });
+    return "mock-reservation-prepaid";
+  }
+
+  const reservationId = await runTransaction(db, async (tx) => {
+    const userRef = doc(db, "users", userId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+
+    const user = userSnap.data() as User;
+    if (user.balance < amount) throw new Error("ポイント残高が不足しています");
+
+    // 残高を減算
+    tx.update(userRef, {
+      balance: user.balance - amount,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 加盟店の売上残高を加算
+    const merchantRef = doc(db, "merchants", merchantId);
+    const merchantSnap = await tx.get(merchantRef);
+    if (merchantSnap.exists()) {
+      const merchant = merchantSnap.data() as Merchant;
+      tx.update(merchantRef, {
+        salesBalance: (merchant.salesBalance || 0) + amount,
+      });
+    }
+
+    // 予約を作成
+    const resRef = doc(collection(db, "reservations"));
+    tx.set(resRef, {
+      ...reservationData,
+      createdAt: Timestamp.now(),
+    });
+
+    // 取引履歴を記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: userId,
+      toMerchantId: merchantId,
+      amount,
+      type: "payment",
+      memo: `予約事前決済（${reservationData.date} ${reservationData.time}）`,
+      createdAt: Timestamp.now(),
+    });
+
+    return resRef.id;
+  });
+
+  return reservationId;
+}
+
+export async function processReservationCancellation(
+  reservationId: string,
+  userId: string,
+  merchantId: string,
+  cancellationFee: number,
+  prepaidAmount: number
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] cancelReservation:", reservationId);
+    return;
+  }
+
+  await runTransaction(db, async (tx) => {
+    // 予約ステータスを更新
+    const resRef = doc(db, "reservations", reservationId);
+    tx.update(resRef, { status: "cancelled" });
+
+    // 事前決済されていた場合、返金処理（キャンセル料を差し引き）
+    if (prepaidAmount > 0) {
+      const refundAmount = prepaidAmount - cancellationFee;
+
+      if (refundAmount > 0) {
+        // 市民に返金
+        const userRef = doc(db, "users", userId);
+        const userSnap = await tx.get(userRef);
+        if (userSnap.exists()) {
+          const user = userSnap.data() as User;
+          tx.update(userRef, {
+            balance: user.balance + refundAmount,
+            updatedAt: Timestamp.now(),
+          });
+        }
+
+        // 加盟店から減算
+        const merchantRef = doc(db, "merchants", merchantId);
+        const merchantSnap = await tx.get(merchantRef);
+        if (merchantSnap.exists()) {
+          const merchant = merchantSnap.data() as Merchant;
+          tx.update(merchantRef, {
+            salesBalance: Math.max(0, (merchant.salesBalance || 0) - refundAmount),
+          });
+        }
+
+        // 返金取引を記録
+        const txRef = doc(collection(db, "transactions"));
+        tx.set(txRef, {
+          fromUserId: "system",
+          toMerchantId: "",
+          amount: refundAmount,
+          type: "refund",
+          memo: `予約キャンセル返金（キャンセル料: ${cancellationFee}pt）`,
+          createdAt: Timestamp.now(),
+        });
+      }
+    }
+  });
 }
