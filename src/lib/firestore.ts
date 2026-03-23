@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2619,5 +2619,261 @@ export async function cancelOrder(orderId: string): Promise<void> {
       memo: `EC注文キャンセル返金: ${order.productName}`,
       createdAt: Timestamp.now(),
     });
+  });
+}
+
+// ========== Driver (ドライバー) ==========
+
+export async function getDriver(userId: string): Promise<Driver | null> {
+  if (USE_MOCK) return null;
+  const snap = await getDoc(doc(db, "drivers", userId));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Driver) : null;
+}
+
+export async function registerDriver(userId: string, displayName: string): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] registerDriver:", { userId, displayName });
+    return;
+  }
+  await setDoc(doc(db, "drivers", userId), {
+    userId,
+    displayName,
+    isAvailable: false,
+    totalDeliveries: 0,
+    totalEarnings: 0,
+    rating: 0,
+    ratingCount: 0,
+    registeredAt: Timestamp.now(),
+  });
+}
+
+export async function updateDriverAvailability(userId: string, isAvailable: boolean): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "drivers", userId), { isAvailable });
+}
+
+// ========== Delivery (配達) ==========
+
+export async function createDeliveryRequest(data: {
+  requesterId: string;
+  requesterName: string;
+  pickup: string;
+  destination: string;
+  description: string;
+  fee: number;
+  preferredTime: string;
+  shopId?: string;
+  orderId?: string;
+}): Promise<string> {
+  if (data.fee <= 0) throw new Error("配達料は1以上を指定してください");
+
+  const platformFee = Math.floor(data.fee * 0.1);
+
+  if (USE_MOCK) {
+    console.log("[Mock] createDeliveryRequest:", data);
+    return "mock-delivery-new";
+  }
+
+  // 依頼者のポイントを仮引き落とし（トランザクション）
+  const deliveryId = await runTransaction(db, async (tx) => {
+    const userRef = doc(db, "users", data.requesterId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+
+    const user = userSnap.data() as User;
+    if (user.balance < data.fee) throw new Error("ポイント残高が不足しています");
+
+    // 残高を減算
+    tx.update(userRef, {
+      balance: user.balance - data.fee,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 配達依頼を作成
+    const deliveryRef = doc(collection(db, "deliveries"));
+    tx.set(deliveryRef, {
+      requesterId: data.requesterId,
+      requesterName: data.requesterName,
+      driverId: "",
+      driverName: "",
+      shopId: data.shopId || "",
+      orderId: data.orderId || "",
+      pickup: data.pickup,
+      destination: data.destination,
+      description: data.description,
+      fee: data.fee,
+      platformFee,
+      status: "open",
+      preferredTime: data.preferredTime,
+      createdAt: Timestamp.now(),
+    });
+
+    return deliveryRef.id;
+  });
+
+  return deliveryId;
+}
+
+export async function getOpenDeliveries(): Promise<Delivery[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "deliveries"),
+    where("status", "==", "open"),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Delivery);
+}
+
+export async function getDriverDeliveries(driverId: string): Promise<Delivery[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "deliveries"),
+    where("driverId", "==", driverId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Delivery);
+}
+
+export async function getRequesterDeliveries(requesterId: string): Promise<Delivery[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "deliveries"),
+    where("requesterId", "==", requesterId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Delivery);
+}
+
+export async function acceptDelivery(deliveryId: string, driverId: string, driverName: string): Promise<void> {
+  if (USE_MOCK) return;
+  await runTransaction(db, async (tx) => {
+    const deliveryRef = doc(db, "deliveries", deliveryId);
+    const deliverySnap = await tx.get(deliveryRef);
+    if (!deliverySnap.exists()) throw new Error("配達依頼が見つかりません");
+
+    const delivery = deliverySnap.data() as Delivery;
+    if (delivery.status !== "open") throw new Error("この配達依頼は既に受注されています");
+
+    tx.update(deliveryRef, {
+      driverId,
+      driverName,
+      status: "accepted",
+    });
+  });
+}
+
+export async function updateDeliveryStatus(deliveryId: string, status: DeliveryStatus): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "deliveries", deliveryId), { status });
+}
+
+export async function completeDelivery(deliveryId: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  await runTransaction(db, async (tx) => {
+    const deliveryRef = doc(db, "deliveries", deliveryId);
+    const deliverySnap = await tx.get(deliveryRef);
+    if (!deliverySnap.exists()) throw new Error("配達依頼が見つかりません");
+
+    const delivery = deliverySnap.data() as Delivery;
+    if (delivery.status !== "picked_up") throw new Error("集荷完了後に配達完了できます");
+
+    const driverEarnings = delivery.fee - delivery.platformFee;
+
+    // ドライバーにポイント入金
+    const driverUserRef = doc(db, "users", delivery.driverId);
+    const driverUserSnap = await tx.get(driverUserRef);
+    if (driverUserSnap.exists()) {
+      const driverUser = driverUserSnap.data() as User;
+      tx.update(driverUserRef, {
+        balance: driverUser.balance + driverEarnings,
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    // ドライバー統計を更新
+    const driverRef = doc(db, "drivers", delivery.driverId);
+    const driverSnap = await tx.get(driverRef);
+    if (driverSnap.exists()) {
+      const driver = driverSnap.data() as Driver;
+      tx.update(driverRef, {
+        totalDeliveries: driver.totalDeliveries + 1,
+        totalEarnings: driver.totalEarnings + driverEarnings,
+      });
+    }
+
+    // 配達ステータスを更新
+    tx.update(deliveryRef, { status: "delivered" });
+
+    // トランザクション記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: delivery.requesterId,
+      toMerchantId: "",
+      amount: driverEarnings,
+      type: "payment",
+      memo: `配達報酬: ${delivery.description}`,
+      createdAt: Timestamp.now(),
+    });
+  });
+}
+
+export async function cancelDeliveryRequest(deliveryId: string): Promise<void> {
+  if (USE_MOCK) return;
+
+  await runTransaction(db, async (tx) => {
+    const deliveryRef = doc(db, "deliveries", deliveryId);
+    const deliverySnap = await tx.get(deliveryRef);
+    if (!deliverySnap.exists()) throw new Error("配達依頼が見つかりません");
+
+    const delivery = deliverySnap.data() as Delivery;
+    if (delivery.status !== "open") throw new Error("受注済みの配達はキャンセルできません");
+
+    // 依頼者にポイント返金
+    const userRef = doc(db, "users", delivery.requesterId);
+    const userSnap = await tx.get(userRef);
+    if (userSnap.exists()) {
+      const user = userSnap.data() as User;
+      tx.update(userRef, {
+        balance: user.balance + delivery.fee,
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    tx.update(deliveryRef, { status: "cancelled" });
+  });
+}
+
+export async function rateDriver(deliveryId: string, rating: number): Promise<void> {
+  if (USE_MOCK) return;
+  if (rating < 1 || rating > 5) throw new Error("評価は1〜5の範囲で指定してください");
+
+  await runTransaction(db, async (tx) => {
+    const deliveryRef = doc(db, "deliveries", deliveryId);
+    const deliverySnap = await tx.get(deliveryRef);
+    if (!deliverySnap.exists()) throw new Error("配達依頼が見つかりません");
+
+    const delivery = deliverySnap.data() as Delivery;
+    if (delivery.status !== "delivered") throw new Error("配達完了後に評価できます");
+    if (delivery.rating) throw new Error("既に評価済みです");
+
+    // 配達に評価を記録
+    tx.update(deliveryRef, { rating });
+
+    // ドライバーの平均評価を更新
+    const driverRef = doc(db, "drivers", delivery.driverId);
+    const driverSnap = await tx.get(driverRef);
+    if (driverSnap.exists()) {
+      const driver = driverSnap.data() as Driver;
+      const newCount = driver.ratingCount + 1;
+      const newRating = ((driver.rating * driver.ratingCount) + rating) / newCount;
+      tx.update(driverRef, {
+        rating: Math.round(newRating * 10) / 10,
+        ratingCount: newCount,
+      });
+    }
   });
 }

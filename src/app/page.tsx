@@ -7,7 +7,7 @@ import BalanceCard from "@/components/BalanceCard";
 import TransactionList from "@/components/TransactionList";
 import { getUserTransactions } from "@/lib/firestore";
 import type { Transaction } from "@/types";
-import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote } from "lucide-react";
+import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote, Truck, Package } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
@@ -127,6 +127,20 @@ function HomeContent() {
         >
           <Gift size={18} />
           お店を紹介
+        </Link>
+        <Link
+          href="/delivery/request"
+          className="flex items-center gap-2 bg-teal-50 text-teal-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-teal-100 transition-colors"
+        >
+          <Package size={18} />
+          配達を依頼
+        </Link>
+        <Link
+          href="/driver/register"
+          className="flex items-center gap-2 bg-cyan-50 text-cyan-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-cyan-100 transition-colors"
+        >
+          <Truck size={18} />
+          ドライバーになる
         </Link>
         {user.role === "admin" && (
           <Link

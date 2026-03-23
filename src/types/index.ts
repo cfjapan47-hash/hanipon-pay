@@ -301,6 +301,43 @@ export interface Order {
 
 // ========== Shop Customer ==========
 
+// ========== Delivery (配達マッチング) ==========
+
+export type DeliveryStatus = "open" | "accepted" | "picked_up" | "delivered" | "cancelled";
+
+export interface Delivery {
+  id?: string;
+  requesterId: string;
+  requesterName: string;
+  driverId: string;
+  driverName: string;
+  shopId: string;
+  orderId: string;
+  pickup: string;
+  destination: string;
+  description: string;
+  fee: number;
+  platformFee: number;
+  status: DeliveryStatus;
+  preferredTime: string;
+  rating?: number;
+  createdAt: Timestamp;
+}
+
+export interface Driver {
+  id?: string;
+  userId: string;
+  displayName: string;
+  isAvailable: boolean;
+  totalDeliveries: number;
+  totalEarnings: number;
+  rating: number;
+  ratingCount: number;
+  registeredAt: Timestamp;
+}
+
+// ========== Shop Customer ==========
+
 export interface ShopCustomer {
   id?: string;
   merchantId: string;
