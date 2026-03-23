@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList, Link as LinkIcon } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -182,6 +182,13 @@ function MerchantContent() {
       >
         <ClipboardList size={18} />
         注文管理（EC）
+      </Link>
+      <Link
+        href="/merchant/payment-link"
+        className="flex items-center justify-center gap-2 bg-blue-500 text-white rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-blue-600 transition-colors mb-3"
+      >
+        <LinkIcon size={18} />
+        オンライン決済リンク生成
       </Link>
       <Link
         href="/merchant/profile"
