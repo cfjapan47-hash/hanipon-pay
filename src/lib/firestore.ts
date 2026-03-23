@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2402,4 +2402,222 @@ export async function deleteProduct(productId: string): Promise<void> {
     return;
   }
   await deleteDoc(doc(db, "products", productId));
+}
+
+// ========== Marketplace (全商品取得) ==========
+
+export async function getAllActiveProducts(): Promise<Product[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "products"),
+    where("isActive", "==", true),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+}
+
+export async function getProduct(productId: string): Promise<Product | null> {
+  if (USE_MOCK) return null;
+  const snap = await getDoc(doc(db, "products", productId));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Product) : null;
+}
+
+// ========== Orders (EC注文) ==========
+
+export async function processEcPurchase(params: {
+  productId: string;
+  productName: string;
+  buyerId: string;
+  buyerName: string;
+  shopId: string;
+  shopName: string;
+  unitPrice: number;
+  quantity: number;
+  method: "pickup" | "delivery";
+  deliveryAddress: string;
+  memo: string;
+}): Promise<string> {
+  const totalAmount = params.unitPrice * params.quantity;
+  if (totalAmount <= 0) throw new Error("金額は1以上を指定してください");
+  if (params.quantity <= 0) throw new Error("数量は1以上を指定してください");
+
+  if (USE_MOCK) {
+    console.log("[Mock] processEcPurchase:", params);
+    return "mock-order-id";
+  }
+
+  const orderId = await runTransaction(db, async (tx) => {
+    // 1. 購入者の残高チェック & 減算
+    const userRef = doc(db, "users", params.buyerId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) throw new Error("ユーザーが見つかりません");
+    const user = userSnap.data() as User;
+    if (user.balance < totalAmount) throw new Error("ポイント残高が不足しています");
+
+    // 2. 在庫チェック & 減算
+    const productRef = doc(db, "products", params.productId);
+    const productSnap = await tx.get(productRef);
+    if (!productSnap.exists()) throw new Error("商品が見つかりません");
+    const product = productSnap.data() as Product;
+    if (product.stock < params.quantity) throw new Error("在庫が不足しています");
+
+    // 残高減算
+    tx.update(userRef, {
+      balance: user.balance - totalAmount,
+      updatedAt: Timestamp.now(),
+    });
+
+    // 在庫減算
+    tx.update(productRef, {
+      stock: product.stock - params.quantity,
+    });
+
+    // 3. 加盟店の売上残高に加算（4%手数料差し引き）
+    const feeRate = 0.04;
+    const fee = Math.floor(totalAmount * feeRate);
+    const merchantReceive = totalAmount - fee;
+
+    const merchantRef = doc(db, "merchants", params.shopId);
+    const merchantSnap = await tx.get(merchantRef);
+    if (merchantSnap.exists()) {
+      const merchant = merchantSnap.data() as Merchant;
+      tx.update(merchantRef, {
+        salesBalance: (merchant.salesBalance || 0) + merchantReceive,
+      });
+    }
+
+    // 4. 取引記録を作成
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: params.buyerId,
+      toMerchantId: params.shopId,
+      amount: totalAmount,
+      fee,
+      merchantReceive,
+      type: "payment",
+      memo: `EC購入: ${params.productName} x${params.quantity}`,
+      createdAt: Timestamp.now(),
+    });
+
+    // 5. 注文を作成
+    const orderRef = doc(collection(db, "orders"));
+    tx.set(orderRef, {
+      productId: params.productId,
+      productName: params.productName,
+      buyerId: params.buyerId,
+      buyerName: params.buyerName,
+      shopId: params.shopId,
+      shopName: params.shopName,
+      amount: totalAmount,
+      quantity: params.quantity,
+      method: params.method,
+      deliveryAddress: params.deliveryAddress,
+      status: "pending",
+      memo: params.memo,
+      createdAt: Timestamp.now(),
+    });
+
+    return orderRef.id;
+  });
+
+  return orderId;
+}
+
+export async function getOrdersByBuyer(buyerId: string): Promise<Order[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "orders"),
+    where("buyerId", "==", buyerId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
+}
+
+export async function getOrdersByShop(shopId: string): Promise<Order[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "orders"),
+    where("shopId", "==", shopId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
+}
+
+export async function updateOrderStatus(
+  orderId: string,
+  status: OrderStatus
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] updateOrderStatus:", orderId, status);
+    return;
+  }
+  await updateDoc(doc(db, "orders", orderId), { status });
+}
+
+export async function cancelOrder(orderId: string): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] cancelOrder:", orderId);
+    return;
+  }
+
+  await runTransaction(db, async (tx) => {
+    const orderRef = doc(db, "orders", orderId);
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists()) throw new Error("注文が見つかりません");
+    const order = orderSnap.data() as Order;
+
+    if (order.status !== "pending") throw new Error("この注文はキャンセルできません");
+
+    // 1. 注文をキャンセル
+    tx.update(orderRef, { status: "cancelled" });
+
+    // 2. 購入者に返金
+    const userRef = doc(db, "users", order.buyerId);
+    const userSnap = await tx.get(userRef);
+    if (userSnap.exists()) {
+      const user = userSnap.data() as User;
+      tx.update(userRef, {
+        balance: user.balance + order.amount,
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    // 3. 加盟店の売上残高から差し引き
+    const feeRate = 0.04;
+    const fee = Math.floor(order.amount * feeRate);
+    const merchantReceive = order.amount - fee;
+
+    const merchantRef = doc(db, "merchants", order.shopId);
+    const merchantSnap = await tx.get(merchantRef);
+    if (merchantSnap.exists()) {
+      const merchant = merchantSnap.data() as Merchant;
+      tx.update(merchantRef, {
+        salesBalance: Math.max(0, (merchant.salesBalance || 0) - merchantReceive),
+      });
+    }
+
+    // 4. 在庫を戻す
+    const productRef = doc(db, "products", order.productId);
+    const productSnap = await tx.get(productRef);
+    if (productSnap.exists()) {
+      const product = productSnap.data() as Product;
+      tx.update(productRef, {
+        stock: product.stock + order.quantity,
+      });
+    }
+
+    // 5. 返金トランザクション記録
+    const txRef = doc(collection(db, "transactions"));
+    tx.set(txRef, {
+      fromUserId: "system",
+      toMerchantId: order.shopId,
+      amount: order.amount,
+      type: "refund",
+      memo: `EC注文キャンセル返金: ${order.productName}`,
+      createdAt: Timestamp.now(),
+    });
+  });
 }

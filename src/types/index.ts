@@ -277,6 +277,28 @@ export interface Reservation {
   createdAt: Timestamp;
 }
 
+// ========== Order (EC注文) ==========
+
+export type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
+export type OrderMethod = "pickup" | "delivery";
+
+export interface Order {
+  id?: string;
+  productId: string;
+  productName: string;
+  buyerId: string;
+  buyerName: string;
+  shopId: string;
+  shopName: string;
+  amount: number;
+  quantity: number;
+  method: OrderMethod;
+  deliveryAddress: string;
+  status: OrderStatus;
+  memo: string;
+  createdAt: Timestamp;
+}
+
 // ========== Shop Customer ==========
 
 export interface ShopCustomer {
