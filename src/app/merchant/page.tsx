@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList, Link as LinkIcon } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList, Link as LinkIcon, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -192,10 +192,17 @@ function MerchantContent() {
       </Link>
       <Link
         href="/merchant/profile"
-        className="flex items-center justify-center gap-2 bg-white border-2 border-blue-200 text-blue-600 rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-blue-50 transition-colors mb-6"
+        className="flex items-center justify-center gap-2 bg-white border-2 border-blue-200 text-blue-600 rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-blue-50 transition-colors mb-3"
       >
         <UserCog size={18} />
         プロフィール編集（店舗ホームページ）
+      </Link>
+      <Link
+        href="/merchant/kyc"
+        className="flex items-center justify-center gap-2 bg-white border-2 border-green-200 text-green-600 rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-green-50 transition-colors mb-6"
+      >
+        <ShieldCheck size={18} />
+        本人確認 (eKYC)
       </Link>
 
       <h2 className="text-sm font-semibold text-gray-600 mb-3">取引一覧</h2>

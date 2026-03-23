@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { getSystemStats } from "@/lib/firestore";
 import { formatPoints } from "@/lib/utils";
-import { Loader2, Users, Store, ArrowRightLeft, Gift, List, Banknote, CreditCard, Zap } from "lucide-react";
+import { Loader2, Users, Store, ArrowRightLeft, Gift, List, Banknote, CreditCard, Zap, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 function AdminContent() {
@@ -139,6 +139,21 @@ function AdminContent() {
             <p className="font-medium text-gray-800">換金申請管理</p>
             <p className="text-xs text-gray-400">
               加盟店からの換金申請を処理
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/kyc"
+          className="flex items-center gap-3 bg-white rounded-xl px-4 py-4 shadow-sm hover:bg-teal-50 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center">
+            <ShieldCheck size={18} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-800">本人確認審査</p>
+            <p className="text-xs text-gray-400">
+              加盟店のeKYC申請を審査
             </p>
           </div>
         </Link>

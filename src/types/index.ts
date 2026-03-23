@@ -80,6 +80,23 @@ export interface ChargeRequest {
   approvedBy?: string;
 }
 
+// ========== KYC (本人確認) ==========
+
+export type KycStatus = "unverified" | "pending" | "verified" | "rejected";
+
+export interface KycRecord {
+  merchantId: string;
+  status: KycStatus;
+  fullName: string;
+  address: string;
+  dateOfBirth: string;
+  expiryDate: string;
+  submittedAt?: Timestamp;
+  verifiedAt?: Timestamp;
+  rejectionReason?: string;
+  verifiedBy?: string; // "auto" or 管理者ID
+}
+
 export type TransactionType = "payment" | "grant" | "refund" | "referral_reward" | "cash_charge" | "card_charge" | "card_balance_transfer";
 
 export interface Transaction {

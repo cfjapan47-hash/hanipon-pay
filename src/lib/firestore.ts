@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2875,5 +2875,62 @@ export async function rateDriver(deliveryId: string, rating: number): Promise<vo
         ratingCount: newCount,
       });
     }
+  });
+}
+
+// ========== KYC (本人確認) ==========
+
+export async function getKycRecord(merchantId: string): Promise<KycRecord | null> {
+  if (USE_MOCK) {
+    return null;
+  }
+  const snap = await getDoc(doc(db, "kycRecords", merchantId));
+  return snap.exists() ? (snap.data() as KycRecord) : null;
+}
+
+export async function submitKycRecord(
+  merchantId: string,
+  data: { fullName: string; address: string; dateOfBirth: string; expiryDate: string }
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] submitKycRecord:", merchantId, data);
+    return;
+  }
+  await setDoc(doc(db, "kycRecords", merchantId), {
+    merchantId,
+    status: "pending",
+    fullName: data.fullName,
+    address: data.address,
+    dateOfBirth: data.dateOfBirth,
+    expiryDate: data.expiryDate,
+    submittedAt: Timestamp.now(),
+  });
+}
+
+export async function getPendingKycRecords(): Promise<{ id: string; data: KycRecord }[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "kycRecords"),
+    where("status", "==", "pending"),
+    orderBy("submittedAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, data: d.data() as KycRecord }));
+}
+
+export async function approveKyc(merchantId: string, adminId: string): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "kycRecords", merchantId), {
+    status: "verified",
+    verifiedAt: Timestamp.now(),
+    verifiedBy: adminId,
+  });
+}
+
+export async function rejectKyc(merchantId: string, reason: string): Promise<void> {
+  if (USE_MOCK) return;
+  await updateDoc(doc(db, "kycRecords", merchantId), {
+    status: "rejected",
+    rejectionReason: reason,
   });
 }

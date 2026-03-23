@@ -6,9 +6,10 @@ import {
   getMerchantByOwner,
   createWithdrawalRequest,
   getMerchantWithdrawals,
+  getKycRecord,
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
-import type { Merchant, WithdrawalRequest } from "@/types";
+import type { Merchant, WithdrawalRequest, KycRecord } from "@/types";
 import {
   Loader2,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -27,6 +29,7 @@ function WithdrawContent() {
     data: Merchant;
   } | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
+  const [kycRecord, setKycRecord] = useState<KycRecord | null>(null);
   const [fetching, setFetching] = useState(true);
   const [amount, setAmount] = useState("");
   const [bankName, setBankName] = useState("");
@@ -43,8 +46,12 @@ function WithdrawContent() {
         if (m) {
           setBankName(m.data.bankName || "");
           setBankAccount(m.data.bankAccount || "");
-          const wds = await getMerchantWithdrawals(m.id);
+          const [wds, kyc] = await Promise.all([
+            getMerchantWithdrawals(m.id),
+            getKycRecord(m.id),
+          ]);
           setWithdrawals(wds);
+          setKycRecord(kyc);
         }
       })
       .catch(console.error)
@@ -145,6 +152,24 @@ function WithdrawContent() {
         </p>
       </div>
 
+      {kycRecord?.status !== "verified" && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center gap-2 text-yellow-700 font-medium mb-1">
+            <ShieldAlert size={18} />
+            本人確認が必要です
+          </div>
+          <p className="text-sm text-yellow-600">
+            換金申請には本人確認（eKYC）が必要です。先に本人確認を完了してください。
+          </p>
+          <Link
+            href="/merchant/kyc"
+            className="inline-block mt-3 bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors"
+          >
+            本人確認ページへ
+          </Link>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4 mb-6">
         <div>
           <label className="text-sm font-medium text-gray-700">
@@ -196,11 +221,13 @@ function WithdrawContent() {
 
         <button
           onClick={handleSubmit}
-          disabled={processing}
+          disabled={processing || kycRecord?.status !== "verified"}
           className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-colors disabled:opacity-50"
         >
           {processing ? (
             <Loader2 className="animate-spin mx-auto" size={20} />
+          ) : kycRecord?.status !== "verified" ? (
+            "本人確認が必要です"
           ) : (
             "換金を申請する"
           )}
