@@ -201,6 +201,23 @@ export interface Card {
   linkedAt?: Timestamp;  // 紐付け日時
 }
 
+// ========== Product (商品・在庫管理) ==========
+
+export type ProductCategory = "食品" | "日用品" | "服飾" | "その他";
+
+export interface Product {
+  id?: string;
+  shopId: string;
+  shopName: string;
+  name: string;
+  price: number;
+  stock: number;
+  description: string;
+  category: ProductCategory;
+  isActive: boolean;
+  createdAt: Timestamp;
+}
+
 // ========== Stamp Card ==========
 
 export type StampRewardType = "point" | "coupon";

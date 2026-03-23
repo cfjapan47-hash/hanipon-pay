@@ -15,9 +15,10 @@ import {
   increment,
   serverTimestamp,
   onSnapshot,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2339,4 +2340,66 @@ export async function processReservationCancellation(
       }
     }
   });
+}
+
+// ========== Products (商品・在庫管理) ==========
+
+export async function getProductsByMerchant(
+  merchantId: string
+): Promise<Product[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "products"),
+    where("shopId", "==", merchantId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+}
+
+export async function getActiveProductsByMerchant(
+  merchantId: string
+): Promise<Product[]> {
+  if (USE_MOCK) return [];
+  const q = query(
+    collection(db, "products"),
+    where("shopId", "==", merchantId),
+    where("isActive", "==", true),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+}
+
+export async function createProduct(
+  data: Omit<Product, "id" | "createdAt">
+): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createProduct:", data);
+    return "mock-product-id";
+  }
+  const ref = await addDoc(collection(db, "products"), {
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function updateProduct(
+  productId: string,
+  data: Partial<Pick<Product, "name" | "price" | "stock" | "description" | "category" | "isActive">>
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] updateProduct:", productId, data);
+    return;
+  }
+  await updateDoc(doc(db, "products", productId), data);
+}
+
+export async function deleteProduct(productId: string): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] deleteProduct:", productId);
+    return;
+  }
+  await deleteDoc(doc(db, "products", productId));
 }

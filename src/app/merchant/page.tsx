@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -167,6 +167,13 @@ function MerchantContent() {
         >
           <CalendarCheck size={20} />
           <span className="text-xs">予約管理</span>
+        </Link>
+        <Link
+          href="/merchant/products"
+          className="flex flex-col items-center justify-center gap-1.5 bg-white rounded-xl px-3 py-3 shadow-sm text-emerald-600 font-medium hover:bg-emerald-50 transition-colors"
+        >
+          <Package size={20} />
+          <span className="text-xs">商品管理</span>
         </Link>
       </div>
       <Link

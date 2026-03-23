@@ -11,8 +11,9 @@ import {
   getStampCardByMerchant,
   getUserStamp,
   getReservationSettings,
+  getActiveProductsByMerchant,
 } from "@/lib/firestore";
-import type { Merchant, Coupon, StampCard, UserStamp, ReservationSettings } from "@/types";
+import type { Merchant, Coupon, StampCard, UserStamp, ReservationSettings, Product } from "@/types";
 import {
   Loader2,
   MapPin,
@@ -29,6 +30,7 @@ import {
   Star,
   Stamp,
   CalendarCheck,
+  Package,
 } from "lucide-react";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
@@ -39,6 +41,7 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [stampCard, setStampCard] = useState<StampCard | null>(null);
   const [userStamp, setUserStamp] = useState<UserStamp | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
   const [reservationEnabled, setReservationEnabled] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -60,10 +63,12 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
       getStampCardByMerchant(merchantId),
       getUserStamp(merchantId, liffUser.userId),
       getReservationSettings(merchantId),
+      getActiveProductsByMerchant(merchantId),
     ])
-      .then(([shopData, couponList, favList, sc, us, resSetting]) => {
+      .then(([shopData, couponList, favList, sc, us, resSetting, productList]) => {
         setShop(shopData);
         setCoupons(couponList);
+        setProducts(productList);
         setStampCard(sc);
         setUserStamp(us);
         setReservationEnabled(resSetting?.isEnabled || false);
@@ -362,6 +367,63 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* 商品一覧 */}
+      {products.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Package size={16} className="text-orange-500" />
+            <p className="text-sm font-semibold text-gray-700">商品</p>
+          </div>
+          <div className="space-y-2">
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className={`border rounded-lg px-3 py-2.5 ${
+                  product.stock === 0
+                    ? "border-gray-200 bg-gray-50"
+                    : "border-orange-200 bg-orange-50"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold ${
+                      product.stock === 0 ? "text-gray-400" : "text-gray-800"
+                    }`}>
+                      {product.name}
+                    </p>
+                    {product.description && (
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                        {product.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-2">
+                    <p className={`text-sm font-bold ${
+                      product.stock === 0 ? "text-gray-400" : "text-orange-600"
+                    }`}>
+                      {product.price.toLocaleString("ja-JP")}
+                      <span className="text-xs ml-0.5">pt</span>
+                    </p>
+                    {product.stock === 0 ? (
+                      <span className="text-xs font-bold text-red-500">品切れ</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">
+                        残り{product.stock}個
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1.5">
+                  <span className="inline-block bg-white/70 text-gray-500 text-xs px-2 py-0.5 rounded-full">
+                    {product.category}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
