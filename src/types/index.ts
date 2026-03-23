@@ -10,6 +10,7 @@ export interface User {
   role: UserRole;
   areaId?: string; // ユーザーの所属エリア
   referralCount?: number;
+  birthday?: string; // "MM-DD" 形式
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -392,4 +393,14 @@ export interface Invoice {
   status: InvoiceStatus;
   paidAt?: Timestamp;
   createdAt: Timestamp;
+}
+
+// ========== Birthday Coupon Settings ==========
+
+export interface BirthdayCouponSettings {
+  isEnabled: boolean;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  validDays: number;
+  updatedAt: Timestamp;
 }

@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord, Invoice, InvoiceStatus } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord, Invoice, InvoiceStatus, BirthdayCouponSettings } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -3054,5 +3054,71 @@ export async function payInvoice(invoiceId: string): Promise<void> {
       status: "paid",
       paidAt: Timestamp.now(),
     });
+  });
+}
+
+// ========== CSV Export (売上データ) ==========
+
+export async function getTransactionsByMerchantDateRange(
+  merchantId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<Transaction[]> {
+  if (USE_MOCK) {
+    return MOCK_TRANSACTIONS.filter((tx) => tx.toMerchantId === merchantId);
+  }
+  const q = query(
+    collection(db, "transactions"),
+    where("toMerchantId", "==", merchantId),
+    where("createdAt", ">=", Timestamp.fromDate(startDate)),
+    where("createdAt", "<=", Timestamp.fromDate(endDate)),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Transaction);
+}
+
+// ========== User Update ==========
+
+export async function updateUser(
+  userId: string,
+  data: Partial<User>
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] updateUser:", userId, data);
+    return;
+  }
+  await updateDoc(doc(db, "users", userId), {
+    ...data,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+// ========== Birthday Coupon Settings ==========
+
+export async function getBirthdayCouponSettings(): Promise<BirthdayCouponSettings | null> {
+  if (USE_MOCK) {
+    return {
+      isEnabled: true,
+      discountType: "fixed",
+      discountValue: 500,
+      validDays: 7,
+      updatedAt: Timestamp.now(),
+    };
+  }
+  const snap = await getDoc(doc(db, "settings", "birthdayCoupon"));
+  return snap.exists() ? (snap.data() as BirthdayCouponSettings) : null;
+}
+
+export async function saveBirthdayCouponSettings(
+  data: Omit<BirthdayCouponSettings, "updatedAt">
+): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[Mock] saveBirthdayCouponSettings:", data);
+    return;
+  }
+  await setDoc(doc(db, "settings", "birthdayCoupon"), {
+    ...data,
+    updatedAt: Timestamp.now(),
   });
 }

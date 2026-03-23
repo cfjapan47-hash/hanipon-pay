@@ -5,9 +5,9 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Navigation from "@/components/Navigation";
 import BalanceCard from "@/components/BalanceCard";
 import TransactionList from "@/components/TransactionList";
-import { getUserTransactions } from "@/lib/firestore";
-import type { Transaction } from "@/types";
-import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote, Truck, Package } from "lucide-react";
+import { getUserTransactions, getBirthdayCouponSettings } from "@/lib/firestore";
+import type { Transaction, BirthdayCouponSettings } from "@/types";
+import { Loader2, Store, Shield, UserPlus, Gift, QrCode, X, Banknote, Truck, Package, UserCog } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import Link from "next/link";
 import { getMerchantByOwner } from "@/lib/firestore";
@@ -18,6 +18,8 @@ function HomeContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isMerchant, setIsMerchant] = useState(false);
   const [showMyQr, setShowMyQr] = useState(false);
+  const [isBirthday, setIsBirthday] = useState(false);
+  const [birthdayCoupon, setBirthdayCoupon] = useState<BirthdayCouponSettings | null>(null);
 
   useEffect(() => {
     if (!liffUser) return;
@@ -28,6 +30,25 @@ function HomeContent() {
       .then((m) => setIsMerchant(!!m))
       .catch(() => {});
   }, [liffUser]);
+
+  // 誕生日チェック
+  useEffect(() => {
+    if (!user?.birthday) return;
+    const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${mm}-${dd}`;
+    if (user.birthday === todayStr) {
+      getBirthdayCouponSettings()
+        .then((settings) => {
+          if (settings?.isEnabled) {
+            setIsBirthday(true);
+            setBirthdayCoupon(settings);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [user]);
 
   if (loading) {
     return (
@@ -57,6 +78,23 @@ function HomeContent() {
       )}
 
       <BalanceCard balance={user.balance} displayName={user.displayName} localBalance={user.localBalance} />
+
+      {/* 誕生日バナー */}
+      {isBirthday && birthdayCoupon && (
+        <div className="mt-3 bg-gradient-to-r from-pink-100 to-yellow-100 border-2 border-pink-300 rounded-xl px-4 py-4 text-center">
+          <p className="text-2xl mb-1">&#127874;</p>
+          <p className="text-lg font-bold text-pink-700">お誕生日おめでとう！</p>
+          <p className="text-sm text-pink-600 mt-1">
+            {birthdayCoupon.discountType === "fixed"
+              ? `${birthdayCoupon.discountValue}ポイント値引きクーポン`
+              : `${birthdayCoupon.discountValue}%割引クーポン`}
+            をプレゼント！
+          </p>
+          <p className="text-xs text-pink-400 mt-1">
+            有効期限: {birthdayCoupon.validDays}日間
+          </p>
+        </div>
+      )}
 
       {/* マイQRコードボタン */}
       <button
@@ -141,6 +179,13 @@ function HomeContent() {
         >
           <Truck size={18} />
           ドライバーになる
+        </Link>
+        <Link
+          href="/profile"
+          className="flex items-center gap-2 bg-gray-50 text-gray-700 rounded-xl px-4 py-3 text-sm font-medium hover:bg-gray-100 transition-colors"
+        >
+          <UserCog size={18} />
+          プロフィール
         </Link>
         {user.role === "admin" && (
           <Link

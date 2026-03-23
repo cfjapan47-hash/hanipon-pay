@@ -19,6 +19,7 @@ import {
   Clock,
   Ticket,
   ChevronRight,
+  Map,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -243,10 +244,24 @@ function ShopsContent() {
                       )}
                     </div>
                   </div>
-                  <ChevronRight
-                    size={18}
-                    className="text-gray-300 flex-shrink-0 mt-1"
-                  />
+                  <div className="flex flex-col items-center gap-2 flex-shrink-0 mt-1">
+                    {shop.data.address && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.data.address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-50 text-blue-500 hover:bg-blue-100 transition-colors"
+                        title="地図で見る"
+                      >
+                        <Map size={14} />
+                      </a>
+                    )}
+                    <ChevronRight
+                      size={18}
+                      className="text-gray-300"
+                    />
+                  </div>
                 </div>
               </Link>
             );

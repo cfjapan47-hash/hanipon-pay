@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { formatPoints, formatDate } from "@/lib/utils";
 import type { Merchant, Transaction } from "@/types";
-import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList, Link as LinkIcon, ShieldCheck, FileText } from "lucide-react";
+import { Loader2, Store, QrCode, Banknote, Ticket, MessageCircle, Users, Wallet, ShoppingBag, Home, UserCog, Stamp, CalendarCheck, Package, ClipboardList, Link as LinkIcon, ShieldCheck, FileText, Download } from "lucide-react";
 import Link from "next/link";
 import MerchantNavigation from "@/components/MerchantNavigation";
 
@@ -203,6 +203,13 @@ function MerchantContent() {
       >
         <UserCog size={18} />
         プロフィール編集（店舗ホームページ）
+      </Link>
+      <Link
+        href="/merchant/export"
+        className="flex items-center justify-center gap-2 bg-white border-2 border-emerald-200 text-emerald-600 rounded-xl px-4 py-3 shadow-sm font-bold text-sm hover:bg-emerald-50 transition-colors mb-3"
+      >
+        <Download size={18} />
+        売上データエクスポート（CSV）
       </Link>
       <Link
         href="/merchant/kyc"

@@ -31,6 +31,7 @@ import {
   Stamp,
   CalendarCheck,
   Package,
+  Map,
 } from "lucide-react";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
@@ -242,6 +243,30 @@ function ShopDetailContent({ merchantId }: { merchantId: string }) {
                 <ExternalLink size={12} />X
               </a>
             )}
+          </div>
+        )}
+
+        {/* Google Maps リンク */}
+        {shop.data.address && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="bg-gray-100 rounded-lg overflow-hidden mb-2" style={{ height: 160 }}>
+              <iframe
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=139.0,36.0,139.5,36.3&layer=mapnik`}
+                width="100%"
+                height="160"
+                style={{ border: 0 }}
+                title="地図"
+              />
+            </div>
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.data.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 rounded-lg px-4 py-2.5 font-medium hover:bg-blue-100 transition-colors"
+            >
+              <Map size={16} />
+              Google Mapsで見る
+            </a>
           </div>
         )}
       </div>
