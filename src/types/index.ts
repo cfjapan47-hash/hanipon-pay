@@ -366,3 +366,30 @@ export interface ShopCustomer {
   visitCount: number;
   totalSpent: number;
 }
+
+// ========== Invoice (BtoB請求書) ==========
+
+export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
+
+export interface InvoiceItem {
+  name: string;
+  qty: number;
+  unitPrice: number;
+  amount: number;
+}
+
+export interface Invoice {
+  id?: string;
+  fromShopId: string;
+  fromShopName: string;
+  toShopId: string;
+  toShopName: string;
+  items: InvoiceItem[];
+  totalAmount: number;
+  fee: number;
+  feeRate: number;
+  dueDate: string; // "2026-04-15"
+  status: InvoiceStatus;
+  paidAt?: Timestamp;
+  createdAt: Timestamp;
+}

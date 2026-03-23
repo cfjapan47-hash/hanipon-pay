@@ -18,7 +18,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord } from "@/types";
+import type { User, Merchant, Transaction, Referral, WithdrawalRequest, Coupon, CouponUse, Message, MessageThread, ShopCustomer, Area, CustomerNote, ChargeRequest, Card, StampCard, UserStamp, ReservationSettings, Reservation, Product, Order, OrderStatus, Delivery, DeliveryStatus, Driver, KycRecord, Invoice, InvoiceStatus } from "@/types";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const HAS_LIFF =
@@ -2932,5 +2932,127 @@ export async function rejectKyc(merchantId: string, reason: string): Promise<voi
   await updateDoc(doc(db, "kycRecords", merchantId), {
     status: "rejected",
     rejectionReason: reason,
+  });
+}
+
+// ========== Invoice (BtoB請求書) ==========
+
+export async function createInvoice(data: Omit<Invoice, "id" | "createdAt">): Promise<string> {
+  if (USE_MOCK) {
+    console.log("[Mock] createInvoice:", data);
+    return "mock-invoice-id";
+  }
+  const ref = await addDoc(collection(db, "invoices"), {
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getInvoicesByShop(
+  shopId: string,
+  direction: "sent" | "received"
+): Promise<Invoice[]> {
+  if (USE_MOCK) return [];
+  const field = direction === "sent" ? "fromShopId" : "toShopId";
+  const q = query(
+    collection(db, "invoices"),
+    where(field, "==", shopId),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+}
+
+export async function getAllInvoices(): Promise<Invoice[]> {
+  if (USE_MOCK) return [];
+  const q = query(collection(db, "invoices"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+}
+
+export async function updateInvoiceStatus(
+  invoiceId: string,
+  status: InvoiceStatus
+): Promise<void> {
+  if (USE_MOCK) return;
+  const updates: Record<string, unknown> = { status };
+  if (status === "paid") {
+    updates.paidAt = Timestamp.now();
+  }
+  await updateDoc(doc(db, "invoices", invoiceId), updates);
+}
+
+/**
+ * 月間BtoB取引額を取得（手数料率判定用）
+ */
+export async function getMonthlyB2BVolume(
+  fromShopId: string,
+  toShopId: string
+): Promise<number> {
+  if (USE_MOCK) return 0;
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const q = query(
+    collection(db, "invoices"),
+    where("fromShopId", "==", fromShopId),
+    where("toShopId", "==", toShopId),
+    where("status", "==", "paid")
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => {
+      const data = d.data();
+      const paidAt = data.paidAt?.toDate?.();
+      return paidAt && paidAt >= startOfMonth;
+    })
+    .reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+}
+
+/**
+ * BtoB請求書の支払い処理（トランザクション）
+ * 請求先の売上残高から引き落とし → 請求元の売上残高に加算（手数料差引）
+ */
+export async function payInvoice(invoiceId: string): Promise<void> {
+  if (USE_MOCK) return;
+  await runTransaction(db, async (transaction) => {
+    const invoiceRef = doc(db, "invoices", invoiceId);
+    const invoiceSnap = await transaction.get(invoiceRef);
+    if (!invoiceSnap.exists()) throw new Error("請求書が見つかりません");
+
+    const invoice = invoiceSnap.data() as Invoice;
+    if (invoice.status !== "sent") throw new Error("この請求書は支払い対象ではありません");
+
+    const fromShopRef = doc(db, "merchants", invoice.fromShopId);
+    const toShopRef = doc(db, "merchants", invoice.toShopId);
+
+    const fromShopSnap = await transaction.get(fromShopRef);
+    const toShopSnap = await transaction.get(toShopRef);
+
+    if (!fromShopSnap.exists()) throw new Error("請求元の加盟店が見つかりません");
+    if (!toShopSnap.exists()) throw new Error("請求先の加盟店が見つかりません");
+
+    const toShopBalance = (toShopSnap.data() as Merchant).salesBalance || 0;
+    if (toShopBalance < invoice.totalAmount) {
+      throw new Error("売上残高が不足しています");
+    }
+
+    const netAmount = invoice.totalAmount - invoice.fee;
+
+    // 請求先から引き落とし
+    transaction.update(toShopRef, {
+      salesBalance: increment(-invoice.totalAmount),
+    });
+
+    // 請求元に加算（手数料差引）
+    transaction.update(fromShopRef, {
+      salesBalance: increment(netAmount),
+    });
+
+    // 請求書ステータス更新
+    transaction.update(invoiceRef, {
+      status: "paid",
+      paidAt: Timestamp.now(),
+    });
   });
 }
