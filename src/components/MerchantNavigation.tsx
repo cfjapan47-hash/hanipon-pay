@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Ticket, MessageCircle, Users, UserCog } from "lucide-react";
+import { LayoutDashboard, Ticket, MessageCircle, Users, UserCog, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMerchantByOwner } from "@/lib/firestore";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
@@ -11,6 +11,7 @@ import { db } from "@/lib/firebase";
 
 const navItems = [
   { href: "/merchant", label: "ホーム", icon: LayoutDashboard },
+  { href: "/merchant/analytics", label: "分析", icon: BarChart3 },
   { href: "/merchant/coupons", label: "クーポン", icon: Ticket },
   { href: "/merchant/messages", label: "メッセージ", icon: MessageCircle },
   { href: "/merchant/customers", label: "顧客", icon: Users },

@@ -1718,6 +1718,166 @@ export async function linkCardToCitizen(
   });
 }
 
+// ========== Analytics (加盟店分析) ==========
+
+export interface AnalyticsData {
+  dailySales: { date: string; total: number; count: number }[];
+  monthlySales: { current: number; previous: number };
+  hourlyVisits: { label: string; count: number }[];
+  repeaterRate: { repeaters: number; total: number };
+  basicStats: {
+    totalSales: number;
+    totalTransactions: number;
+    uniqueCustomers: number;
+    avgPerTransaction: number;
+  };
+}
+
+export async function getMerchantAnalytics(
+  merchantId: string
+): Promise<AnalyticsData> {
+  if (USE_MOCK) {
+    return {
+      dailySales: Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return {
+          date: `${d.getMonth() + 1}/${d.getDate()}`,
+          total: Math.floor(Math.random() * 5000) + 1000,
+          count: Math.floor(Math.random() * 10) + 1,
+        };
+      }),
+      monthlySales: { current: 45000, previous: 38000 },
+      hourlyVisits: [
+        { label: "6-10時", count: 5 },
+        { label: "10-14時", count: 12 },
+        { label: "14-18時", count: 8 },
+        { label: "18-22時", count: 3 },
+      ],
+      repeaterRate: { repeaters: 15, total: 25 },
+      basicStats: {
+        totalSales: 120000,
+        totalTransactions: 85,
+        uniqueCustomers: 25,
+        avgPerTransaction: 1412,
+      },
+    };
+  }
+
+  const now = new Date();
+
+  // 過去30日+先月分のトランザクションを取得
+  const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const txQuery = query(
+    collection(db, "transactions"),
+    where("toMerchantId", "==", merchantId),
+    where("type", "==", "payment"),
+    where("createdAt", ">=", Timestamp.fromDate(firstDayLastMonth)),
+    orderBy("createdAt", "desc")
+  );
+  const txSnap = await getDocs(txQuery);
+  const transactions = txSnap.docs.map(
+    (d) => ({ id: d.id, ...d.data() }) as Transaction
+  );
+
+  // 全トランザクション（累計用）
+  const allTxQuery = query(
+    collection(db, "transactions"),
+    where("toMerchantId", "==", merchantId),
+    where("type", "==", "payment")
+  );
+  const allTxSnap = await getDocs(allTxQuery);
+  const allTransactions = allTxSnap.docs.map(
+    (d) => ({ id: d.id, ...d.data() }) as Transaction
+  );
+
+  // 日別売上（過去7日）
+  const dailySales: { date: string; total: number; count: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const nextD = new Date(d);
+    nextD.setDate(nextD.getDate() + 1);
+    const dayTxs = transactions.filter((tx) => {
+      const txDate = tx.createdAt.toDate();
+      return txDate >= d && txDate < nextD;
+    });
+    dailySales.push({
+      date: `${d.getMonth() + 1}/${d.getDate()}`,
+      total: dayTxs.reduce((sum, tx) => sum + tx.amount, 0),
+      count: dayTxs.length,
+    });
+  }
+
+  // 月別売上
+  const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDayLastMonth = new Date(firstDayThisMonth);
+  const currentMonthTxs = transactions.filter(
+    (tx) => tx.createdAt.toDate() >= firstDayThisMonth
+  );
+  const lastMonthTxs = transactions.filter((tx) => {
+    const txDate = tx.createdAt.toDate();
+    return txDate >= firstDayLastMonth && txDate < lastDayLastMonth;
+  });
+  const monthlySales = {
+    current: currentMonthTxs.reduce((sum, tx) => sum + tx.amount, 0),
+    previous: lastMonthTxs.reduce((sum, tx) => sum + tx.amount, 0),
+  };
+
+  // 時間帯別来客数（過去30日）
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentTxs = transactions.filter(
+    (tx) => tx.createdAt.toDate() >= thirtyDaysAgo
+  );
+  const hourBuckets = [
+    { label: "6-10時", min: 6, max: 10, count: 0 },
+    { label: "10-14時", min: 10, max: 14, count: 0 },
+    { label: "14-18時", min: 14, max: 18, count: 0 },
+    { label: "18-22時", min: 18, max: 22, count: 0 },
+  ];
+  recentTxs.forEach((tx) => {
+    const hour = tx.createdAt.toDate().getHours();
+    const bucket = hourBuckets.find((b) => hour >= b.min && hour < b.max);
+    if (bucket) bucket.count++;
+  });
+
+  // リピーター率
+  const customerQuery = query(
+    collection(db, "shopCustomers"),
+    where("merchantId", "==", merchantId)
+  );
+  const customerSnap = await getDocs(customerQuery);
+  const customers = customerSnap.docs.map((d) => d.data() as ShopCustomer);
+  const repeaters = customers.filter((c) => c.visitCount >= 2).length;
+  const repeaterRate = {
+    repeaters,
+    total: customers.length,
+  };
+
+  // 基本統計
+  const uniqueUserIds = new Set(allTransactions.map((tx) => tx.fromUserId));
+  const totalSales = allTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+  const basicStats = {
+    totalSales,
+    totalTransactions: allTransactions.length,
+    uniqueCustomers: uniqueUserIds.size,
+    avgPerTransaction:
+      allTransactions.length > 0
+        ? Math.round(totalSales / allTransactions.length)
+        : 0,
+  };
+
+  return {
+    dailySales,
+    monthlySales,
+    hourlyVisits: hourBuckets.map((b) => ({ label: b.label, count: b.count })),
+    repeaterRate,
+    basicStats,
+  };
+}
+
 /** カードの紐付け解除 */
 export async function unlinkCard(cardId: string): Promise<void> {
   if (USE_MOCK) return;
